@@ -33,6 +33,10 @@ def write_source(
     manifest = {
         "id": TITLE_ID,
         "version": version,
+        "description": {
+            "short": "Generated description",
+            "full": "Generated description",
+        },
         "icons": {"color": "color.png", "outline": "outline.png"},
         "bots": [
             {
@@ -82,12 +86,101 @@ def test_package_preserves_identity_binding_and_limits_capabilities(tmp_path, ve
             "isNotificationOnly": False,
         }
     ]
-    assert manifest["webApplicationInfo"] == {"id": APP_ID, "resource": "api://example"}
+    assert manifest["webApplicationInfo"] == {
+        "id": APP_ID,
+        "resource": "https://RscBasedStoreApp",
+    }
     assert manifest["authorization"]["permissions"]["resourceSpecific"] == [
         {"name": "ChatMessage.Read.Chat", "type": "Application"}
     ]
+    assert manifest["description"] == builder.APP_DESCRIPTION
     assert "copilotAgents" not in manifest
     assert "supportsChannelFeatures" not in manifest
+
+
+@pytest.mark.parametrize(
+    "resource",
+    [
+        "api://example",
+        "api://example.com",
+        "https://example.com/",
+        "api://app.example.org",
+        "  https://EXAMPLE.NET  ",
+    ],
+)
+def test_package_replaces_placeholder_rsc_resource(tmp_path, resource):
+    source = write_source(tmp_path, resource=resource)
+    manifest_path = tmp_path / "manifest.json"
+
+    builder.build_package(source, tmp_path / "output.zip", manifest_path, APP_ID)
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["webApplicationInfo"]["resource"] == "https://RscBasedStoreApp"
+
+
+@pytest.mark.parametrize(
+    "resource", ["https://RscBasedStoreApp", "api://contoso.com/teams-agent"]
+)
+def test_package_preserves_real_rsc_resource(tmp_path, resource):
+    source = write_source(tmp_path, resource=resource)
+    manifest_path = tmp_path / "manifest.json"
+
+    builder.build_package(source, tmp_path / "output.zip", manifest_path, APP_ID)
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["webApplicationInfo"]["resource"] == resource
+
+
+def valid_manifest():
+    return {
+        "description": dict(builder.APP_DESCRIPTION),
+        "bots": [{"botId": APP_ID, "scopes": ["personal", "groupChat"]}],
+        "webApplicationInfo": {"id": APP_ID, "resource": "https://RscBasedStoreApp"},
+        "authorization": {
+            "permissions": {
+                "resourceSpecific": [
+                    {"name": "ChatMessage.Read.Chat", "type": "Application"}
+                ]
+            }
+        },
+    }
+
+
+def test_validate_manifest_accepts_built_shape():
+    builder.validate_manifest(valid_manifest(), APP_ID)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda m: m["bots"].append({"botId": TITLE_ID, "scopes": []}), "bots"),
+        (lambda m: m["bots"][0].update(scopes=["personal"]), "scopes"),
+        (lambda m: m["webApplicationInfo"].update(id=TITLE_ID), "webApplicationInfo.id"),
+        (
+            lambda m: m["webApplicationInfo"].update(resource="api://example.com"),
+            "placeholder",
+        ),
+        (lambda m: m["webApplicationInfo"].update(resource=" "), "placeholder"),
+        (lambda m: m.pop("authorization"), "ChatMessage.Read.Chat"),
+        (
+            lambda m: m["authorization"]["permissions"]["resourceSpecific"].append(
+                {"name": "Chat.ReadWrite.Chat", "type": "Application"}
+            ),
+            "ChatMessage.Read.Chat",
+        ),
+        (
+            lambda m: m.update(
+                description={"short": "Generic agent", "full": "Generic agent"}
+            ),
+            "description",
+        ),
+    ],
+)
+def test_validate_manifest_rejects_invalid_packages(mutate, message):
+    manifest = valid_manifest()
+    mutate(manifest)
+    with pytest.raises(RuntimeError, match=message):
+        builder.validate_manifest(manifest, APP_ID)
 
 
 def test_teams_version_is_not_an_unexpanded_publish_placeholder():

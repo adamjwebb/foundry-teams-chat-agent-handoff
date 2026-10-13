@@ -163,6 +163,12 @@ sample implements only Activity, so it advertises only Activity. Endpoint
 collection updates replace existing entries; retain any protocols and
 authorization schemes you want to keep.
 
+This Activity-only implementation is intentionally limited to the POC. Current
+Foundry guidance recommends Responses plus Activity for agents published to
+Teams so that Responses supplies the conversation semantics and the platform
+bridges channel delivery through Activity. Evaluate that migration before
+production use; it is not required to prove this POC's direct Activity handler.
+
 ## 7. Deployment
 
 - `azd provision` creates the Foundry account, project, and model deployment.

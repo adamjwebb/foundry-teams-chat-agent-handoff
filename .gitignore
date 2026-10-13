@@ -26,6 +26,7 @@ env/
 /appPackage/manifest.json
 /appPackage/appPackage.zip
 /foundry-teams-chat-agent-poc.zip
+/src/foundry-teams-chat-agent/TEAMS_APP_SETUP.md
 
 # Local tooling
 .mypy_cache/

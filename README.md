@@ -60,9 +60,13 @@ Outputs:
 - `foundry-teams-chat-agent-poc.zip`: the package to upload to Teams.
 - `appPackage/manifest.json`: the generated manifest for inspection.
 
-The builder preserves the generated Teams title ID, bot/agent ID, resource
-value, and icons. It advertises only personal and group-chat scopes, disables
-files, and requests only `ChatMessage.Read.Chat` application RSC. The checked-in
+The builder preserves the generated Teams title ID, bot/agent ID, and icons. It
+replaces a placeholder `webApplicationInfo.resource` (such as
+`api://example.com`) with Microsoft's documented RSC value
+`https://RscBasedStoreApp`. It advertises only personal and group-chat scopes,
+disables files, requests only `ChatMessage.Read.Chat` application RSC, and adds
+a description explaining how recent group-chat messages are used. It then
+validates the final manifest before writing the package. The checked-in
 [manifest template](appPackage/manifest.template.json) is illustrative, not the
 source of the ownership-bound package.
 

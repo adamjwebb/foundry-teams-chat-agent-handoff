@@ -4,6 +4,9 @@ After deployment, the post-deploy hook creates
 `foundry-teams-chat-agent-poc.zip` in the repository root. Upload this generated
 package; do not build a separate manifest by hand because the package is bound
 to the deployed bot identity and includes the chat-scoped permission declaration.
+The generated app description discloses that the agent sends a bounded window
+of recent messages from a consenting group chat to the configured Foundry model
+and does not persist that history.
 
 ## Recover from a missing Teams app version
 
@@ -34,6 +37,11 @@ There is no need to reprovision or redeploy the successfully deployed agent.
 The app reads a bounded window of recent messages only from the group chat where
 it is installed and consented. It does not read team/channel messages or files.
 Unmentioned group-chat messages do not trigger a reply.
+
+For a personal-only installation, no group-chat consent is required and the
+agent does not call Microsoft Graph for chat history. With the configured
+`BotServiceRbac` authorization, every person who invokes the agent must also
+have **Foundry Agent Consumer** at the agent or project scope.
 
 If **Upload a custom app** is unavailable, custom app upload is disabled by
 tenant policy; ask a Teams administrator about enabling it. See the

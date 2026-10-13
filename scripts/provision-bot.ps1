@@ -82,6 +82,10 @@ if ($LASTEXITCODE -ne 0) {
     throw "Teams RSC package generation failed"
 }
 Remove-Item $packedPath
+Remove-Item `
+    (Join-Path $rootDir "src/foundry-teams-chat-agent/TEAMS_APP_SETUP.md") `
+    -Force `
+    -ErrorAction SilentlyContinue
 
 Write-Host "Using hosted-agent Azure Bot '$botName'"
 Write-Host "Generated Microsoft 365-bound Teams package with Agent Identity $clientId"

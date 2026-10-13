@@ -68,6 +68,7 @@ python3 "$root_dir/scripts/build-teams-package.py" \
   "$root_dir/appPackage/manifest.json" \
   "$client_id"
 rm "$packed_path"
+rm -f "$root_dir/src/foundry-teams-chat-agent/TEAMS_APP_SETUP.md"
 
 echo "Using hosted-agent Azure Bot '$bot_name'"
 echo "Generated Microsoft 365-bound Teams package with Agent Identity $client_id"
