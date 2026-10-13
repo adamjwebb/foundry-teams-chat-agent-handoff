@@ -1,0 +1,156 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.48.1.52935",
+      "templateHash": "5832079294856641721"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for regional resources."
+      }
+    },
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "foundry-teams-chat-agent-poc",
+      "metadata": {
+        "description": "AZD environment name used to derive globally unique resource names."
+      }
+    },
+    "projectName": {
+      "type": "string",
+      "defaultValue": "foundry-teams-chat-agent-poc",
+      "metadata": {
+        "description": "Foundry project name."
+      }
+    },
+    "modelDeploymentName": {
+      "type": "string",
+      "defaultValue": "gpt-4.1-mini",
+      "metadata": {
+        "description": "Model deployment name and model name."
+      }
+    },
+    "modelVersion": {
+      "type": "string",
+      "defaultValue": "2025-04-14",
+      "metadata": {
+        "description": "Model version."
+      }
+    },
+    "modelCapacity": {
+      "type": "int",
+      "defaultValue": 10,
+      "metadata": {
+        "description": "Global Standard model capacity."
+      }
+    }
+  },
+  "variables": {
+    "nameSuffix": "[uniqueString(subscription().id, resourceGroup().id)]",
+    "accountName": "[take(format('foundry{0}', variables('nameSuffix')), 24)]",
+    "resourceTags": {
+      "Environment": "[parameters('environmentName')]",
+      "Project": "foundry-teams-chat-agent-poc"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.CognitiveServices/accounts",
+      "apiVersion": "2025-06-01",
+      "name": "[variables('accountName')]",
+      "location": "[parameters('location')]",
+      "kind": "AIServices",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "sku": {
+        "name": "S0"
+      },
+      "tags": "[variables('resourceTags')]",
+      "properties": {
+        "allowProjectManagement": true,
+        "customSubDomainName": "[variables('accountName')]",
+        "publicNetworkAccess": "Enabled",
+        "disableLocalAuth": true
+      }
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/projects",
+      "apiVersion": "2025-06-01",
+      "name": "[format('{0}/{1}', variables('accountName'), parameters('projectName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('resourceTags')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "displayName": "Foundry Teams Chat Agent POC",
+        "description": "Microsoft Foundry project for the Teams chat agent proof of concept."
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('accountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/deployments",
+      "apiVersion": "2025-06-01",
+      "name": "[format('{0}/{1}', variables('accountName'), parameters('modelDeploymentName'))]",
+      "sku": {
+        "name": "GlobalStandard",
+        "capacity": "[parameters('modelCapacity')]"
+      },
+      "properties": {
+        "model": {
+          "format": "OpenAI",
+          "name": "[parameters('modelDeploymentName')]",
+          "version": "[parameters('modelVersion')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('accountName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), parameters('projectName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "AZURE_LOCATION": {
+      "type": "string",
+      "value": "[parameters('location')]"
+    },
+    "AZURE_AI_PROJECT_ENDPOINT": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), parameters('projectName')), '2025-06-01').endpoints['AI Foundry API']]"
+    },
+    "FOUNDRY_PROJECT_ENDPOINT": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), parameters('projectName')), '2025-06-01').endpoints['AI Foundry API']]"
+    },
+    "AZURE_AI_PROJECT_ID": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), parameters('projectName'))]"
+    },
+    "AZURE_AI_FOUNDRY_PROJECT_ID": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), parameters('projectName'))]"
+    },
+    "AZURE_AI_ACCOUNT_NAME": {
+      "type": "string",
+      "value": "[variables('accountName')]"
+    },
+    "AZURE_AI_PROJECT_NAME": {
+      "type": "string",
+      "value": "[parameters('projectName')]"
+    },
+    "AZURE_AI_MODEL_DEPLOYMENT_NAME": {
+      "type": "string",
+      "value": "[parameters('modelDeploymentName')]"
+    }
+  }
+}

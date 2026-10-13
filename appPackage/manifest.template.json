@@ -1,0 +1,51 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.23/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.23",
+  "version": "0.1.0",
+  "id": "__TEAMS_TITLE_ID__",
+  "developer": {
+    "name": "Contoso Teams Demo",
+    "websiteUrl": "https://www.contoso.com",
+    "privacyUrl": "https://www.contoso.com/privacy",
+    "termsOfUseUrl": "https://www.contoso.com/terms"
+  },
+  "name": {
+    "short": "Foundry Teams Agent",
+    "full": "Foundry Teams Chat Agent POC"
+  },
+  "description": {
+    "short": "Calls the Foundry chat agent from Microsoft Teams.",
+    "full": "A proof of concept Teams bot backed by a newly provisioned Microsoft Foundry hosted agent."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#003B5C",
+  "bots": [
+    {
+      "botId": "__BOT_APP_ID__",
+      "scopes": [
+        "personal",
+        "groupChat"
+      ],
+      "isNotificationOnly": false,
+      "supportsFiles": false
+    }
+  ],
+  "webApplicationInfo": {
+    "id": "__BOT_APP_ID__",
+    "resource": "https://RscBasedStoreApp"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "name": "ChatMessage.Read.Chat",
+          "type": "Application"
+        }
+      ]
+    }
+  },
+  "validDomains": []
+}
