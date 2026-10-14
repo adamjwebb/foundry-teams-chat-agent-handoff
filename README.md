@@ -94,3 +94,18 @@ python -m pytest tests -q
 
 The tests intentionally focus on the POC's critical behavior and package
 contract rather than exhaustive coverage.
+
+## Development resources
+
+Official guidance for building Microsoft 365 Teams bots:
+
+- [Microsoft 365 Agents Toolkit (ATK) overview](https://learn.microsoft.com/en-us/microsoftteams/platform/toolkit/agents-toolkit-fundamentals)
+  - Set up the toolkit and understand the development lifecycle.
+- [ATK CLI reference](https://learn.microsoft.com/en-us/microsoftteams/platform/toolkit/microsoft-365-agents-toolkit-cli)
+  - Learn the commands and options for provisioning, deploying, and managing apps.
+- [Microsoft 365 Agents SDK documentation](https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/)
+  - Follow SDK development guidance, including Python quickstarts and samples.
+- [Teams bot design guidelines](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/design/bots)
+  - Design bot interactions, onboarding, and personal and shared chat experiences.
+- [Teams app use cases and capabilities](https://learn.microsoft.com/en-us/microsoftteams/platform/concepts/design/understand-use-cases)
+  - Choose appropriate app capabilities and conversation scopes.
