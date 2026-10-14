@@ -17,8 +17,10 @@ verify personal and consenting group chats.
 - Reads a bounded window of recent group-chat messages after the chat grants
   `ChatMessage.Read.Chat` resource-specific consent.
 - Ignores channel messages and treats chat history as untrusted model context.
-- Uses one user-assigned managed identity for App Service, Azure Bot, Foundry,
-  and Microsoft Graph.
+- When deployed, uses one user-assigned managed identity for App Service,
+  Azure Bot, Foundry, and Microsoft Graph.
+- In local Teams debugging, uses the local bot's app identity for Graph and
+  your developer credential for Foundry.
 
 The Teams agent lifecycle is rooted in `m365agents*.yml`. The shared Foundry
 account, project, and model are independently managed with AZD under
@@ -38,8 +40,9 @@ AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-4.1-mini
 GRAPH_HISTORY_MESSAGE_COUNT=10
 ```
 
-Local developer credentials can test Foundry calls, but they do not reproduce
-the deployed application's group-chat RSC identity.
+The local Teams workflow automatically sets `GRAPH_AUTH_MODE=bot` and reuses
+the generated bot connection's tenant ID, client ID, and secret for Graph.
+No extra Graph secret or tenant-wide chat permission is required.
 
 ## Credential flow
 
@@ -47,15 +50,17 @@ the deployed application's group-chat RSC identity.
 Service, `AZURE_CLIENT_ID` selects the provisioned user-assigned managed
 identity; locally, Azure CLI or VS Code credentials can satisfy the chain.
 
-The application passes that credential—not a reusable raw token—to both
-downstream clients:
+The application passes credentials—not reusable raw tokens—to the downstream
+clients:
 
 1. The Graph history reader requests a token for
    `https://graph.microsoft.com/.default`. Microsoft Graph additionally checks
    that the installed app has `ChatMessage.Read.Chat` consent for the requested
-   group chat.
+   group chat. Local Teams debugging uses `ClientSecretCredential` for the
+   installed local bot; deployed testing uses the managed identity.
 2. `AIProjectClient` requests Foundry-scoped tokens and configures its
-   OpenAI-compatible Responses client to use them for inference.
+   OpenAI-compatible Responses client to use them for inference. This always
+   uses `DefaultAzureCredential`, independently of local Graph authentication.
 
 Incoming Bot Service authentication remains separate and is handled by the
 Microsoft 365 Agents SDK connection manager.
@@ -93,18 +98,18 @@ packages the app, and starts the Python process.
 
 > [!NOTE]
 > **Use for:** Debugging real Teams message handling, personal-chat responses,
-> and group-chat mention routing with local Python breakpoints.
+> and consenting group-chat history retrieval with local Python breakpoints.
 >
 > **Requires:** A Teams tenant that allows custom app installation, the local
-> bot app registration, and a running development tunnel. Stop Playground before
-> switching workflows; both generate the root `.env`.
+> bot app registration, a running development tunnel, and installation of the
+> local app with `ChatMessage.Read.Chat` consent in each test group chat. Stop
+> Playground before switching workflows; both generate the root `.env`.
 >
-> **Limitations:** In the current implementation, outbound Foundry and Graph
-> requests use your developer credential, not the local bot app identity.
-> Installing the app and granting chat-specific consent does not give that
-> developer credential the app's RSC access. You can inspect group-message
-> handling, but use deployed Teams testing for end-to-end group-history
-> verification. See [step 7](docs/development-and-deployment.md#7-debug-locally-in-teams-optional).
+> **Limitations:** Local testing uses a separate app identity from the deployed
+> managed identity; each app needs its own chat installation and consent.
+> Use non-sensitive messages because recent history is sent to Foundry.
+> Playground cannot reproduce this chat consent.
+> See [step 7](docs/development-and-deployment.md#7-debug-locally-in-teams-optional).
 
 ## Deployed Teams testing
 

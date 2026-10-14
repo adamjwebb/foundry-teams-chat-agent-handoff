@@ -31,3 +31,11 @@ def test_agent_infrastructure_uses_managed_identity_for_foundry():
     assert "name: 'AZURE_AI_PROJECT_ENDPOINT'" in bicep
     assert "name: 'AZURE_AI_MODEL_DEPLOYMENT_NAME'" in bicep
     assert "AZURE_OPENAI_API_KEY" not in bicep
+
+
+def test_local_teams_selects_bot_graph_auth_and_playground_resets_it():
+    local = (ROOT / "m365agents.local.yml").read_text()
+    playground = (ROOT / "m365agents.playground.yml").read_text()
+
+    assert 'GRAPH_AUTH_MODE: "bot"' in local
+    assert 'GRAPH_AUTH_MODE: "default"' in playground

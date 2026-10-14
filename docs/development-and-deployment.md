@@ -260,6 +260,9 @@ EOF
 4. Install the local app when Teams opens, then test a personal chat.
 5. Set a breakpoint in [the message handler](../src/agent.py) and send another
    message.
+6. Add the **local** app to a test group chat, approve its request to read
+   that chat's messages, and mention the agent with a question about recent
+   non-sensitive messages.
 
 The generated root `.env` must include
 `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID`, populated from
@@ -267,9 +270,25 @@ The generated root `.env` must include
 into a tracked file.
 
 Local bot authentication uses an app registration and generated secret.
-Outbound Foundry and Graph calls still use your developer credential, not the
-deployed managed identity. A successful local personal chat does not prove
-application-only group-chat access.
+The local workflow sets `GRAPH_AUTH_MODE=bot`, so outbound Graph calls use
+`ClientSecretCredential` with that same bot connection's tenant ID, client ID,
+and secret. Foundry calls still use your developer credential through
+`DefaultAzureCredential`; the local bot does not need a separate Foundry role.
+The deployed workflow continues to use its managed identity for both clients.
+
+Restart **Debug in Teams (Edge)** (or the Chrome/Desktop equivalent) after
+updating this code so the pre-launch tasks regenerate the root `.env`. Look
+for `Microsoft Graph authentication mode: bot` at startup. Do not manually put
+the generated secret into tracked files or set `AZURE_CLIENT_SECRET` globally:
+that would also change Foundry's credential selection.
+
+Consent belongs to the installed app in that specific chat, not to your Azure
+CLI user. A successful personal chat or installation of the deployed app does
+not authorize the local app to read group history. If the local app was
+installed before its manifest requested `ChatMessage.Read.Chat`, update or
+reinstall it in the test group chat and approve the permission. The Playground
+workflow explicitly resets `GRAPH_AUTH_MODE=default`; simulated chats still
+cannot grant RSC consent.
 
 ## 8. Configure a fresh cloud environment
 
@@ -488,7 +507,8 @@ values and review data handling and operational requirements.
 | Model deployment fails | Check regional model/version availability and Global Standard quota for capacity 10. Change the platform deployment parameters or region rather than guessing a model endpoint. |
 | Foundry returns 401/403 | Check the project endpoint, Azure CLI login for local use, and project-scoped Foundry User assignment to the correct caller. In Azure the caller is the bot identity, not your developer user. Wait for propagation. |
 | Foundry model not found | Match `AZURE_AI_MODEL_DEPLOYMENT_NAME` to the actual model deployment output. Do not enter a published agent name. |
-| Personal chat works but group chat fails | Check that the app is installed and has `ChatMessage.Read.Chat` consent in that specific chat. Check logs for Graph errors and verify the package's bot identity matches the deployed managed identity. |
+| Personal chat works but group chat fails | Check that the app is installed and has `ChatMessage.Read.Chat` consent in that specific chat. Check logs for Graph errors and verify the package's bot identity matches the caller: the local bot app for local debugging, or the managed identity when deployed. |
+| Local Teams Graph request returns 403 with `AzureCliCredential` | Restart the full local Teams debug workflow to regenerate `.env` with `GRAPH_AUTH_MODE=bot`. Graph must use the installed bot's application identity, not your Azure CLI user. Foundry can still use `AzureCliCredential`. If Graph still returns 403, verify local-app installation and consent in that chat. |
 | Group chat produces no reply | Use a real Teams mention of this bot. Ordinary text containing its name is not a mention. Channel conversations are intentionally ignored. |
 | Local Teams bot returns 401 | Check the generated `.env` client ID, secret, and tenant ID, then rerun the local Teams debug workflow. Do not reuse Playground's anonymous runtime settings. |
 | Playground/local startup fails | Activate `.venv`, select it in VS Code, check Foundry settings, and free ports `3978` and `56150`. Stop the other debug workflow before retrying. |

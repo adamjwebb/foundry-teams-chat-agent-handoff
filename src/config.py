@@ -12,6 +12,23 @@ class Config:
         )
         self.managed_identity_client_id = env.get("AZURE_CLIENT_ID", "").strip() or None
 
+        self.graph_auth_mode = env.get("GRAPH_AUTH_MODE", "default").strip()
+        if self.graph_auth_mode not in ("default", "bot"):
+            raise RuntimeError("GRAPH_AUTH_MODE must be 'default' or 'bot'")
+        self.graph_bot_credentials: tuple[str, str, str] | None = None
+        if self.graph_auth_mode == "bot":
+            self.graph_bot_credentials = (
+                self._required(
+                    env, "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID"
+                ),
+                self._required(
+                    env, "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID"
+                ),
+                self._required(
+                    env, "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET"
+                ),
+            )
+
         raw_count = env.get("GRAPH_HISTORY_MESSAGE_COUNT", "10")
         try:
             self.graph_history_message_count = int(raw_count)

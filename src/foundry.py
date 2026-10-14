@@ -62,8 +62,8 @@ class GraphChatHistory:
     def __init__(self, credential, message_count, client=None):
         # Keep the TokenCredential rather than a token because Azure Identity
         # handles acquisition, caching, and refresh. The deployed credential is
-        # the bot's user-assigned managed identity; local credentials are useful
-        # for development but do not reproduce application RSC authorization.
+        # the bot's user-assigned managed identity; local Teams uses the bot's
+        # client-secret credential to reproduce application RSC authorization.
         self._credential = credential
         self._message_count = message_count
         # POC: this process-lifetime sync client is called through asyncio.to_thread.
@@ -73,7 +73,7 @@ class GraphChatHistory:
     def read(self, chat_id):
         # Request an application token for the Microsoft Graph audience. Graph
         # then enforces ChatMessage.Read.Chat RSC consent for this specific chat;
-        # possessing the managed identity alone does not grant chat access.
+        # possessing an application identity alone does not grant chat access.
         access_token = self._credential.get_token(_GRAPH_SCOPE).token
         response = self._client.get(
             f"https://graph.microsoft.com/v1.0/chats/{quote(chat_id, safe='')}/messages",

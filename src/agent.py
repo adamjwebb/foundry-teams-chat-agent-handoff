@@ -4,7 +4,7 @@ import os
 
 import httpx
 from azure.core.exceptions import AzureError
-from azure.identity import DefaultAzureCredential
+from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from dotenv import load_dotenv
 from microsoft_agents.activity import ActivityTypes, load_configuration_from_env
 from microsoft_agents.authentication.msal import MsalConnectionManager
@@ -45,16 +45,21 @@ credential = DefaultAzureCredential(
     managed_identity_client_id=config.managed_identity_client_id
 )
 
-# Share one credential chain, not one access token. Each downstream SDK requests
-# and caches a token for its own audience: Microsoft Foundry for inference and
-# Microsoft Graph for chat history.
 gateway = FoundryModelGateway(
     config.project_endpoint,
     config.model_deployment_name,
     credential,
 )
+# Local Teams uses the installed bot's application identity for Graph RSC,
+# while Foundry continues to use the developer credential above.
+graph_credential = (
+    ClientSecretCredential(*config.graph_bot_credentials)
+    if config.graph_bot_credentials is not None
+    else credential
+)
+logger.info("Microsoft Graph authentication mode: %s", config.graph_auth_mode)
 graph_chat_history = GraphChatHistory(
-    credential,
+    graph_credential,
     config.graph_history_message_count,
 )
 
