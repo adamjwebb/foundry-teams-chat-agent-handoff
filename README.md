@@ -1,155 +1,96 @@
-# Foundry Teams Chat Agent POC
+# Demo Foundry Agent
 
-A minimal Python hosted agent that replies in Teams and reads recent messages
-from a consenting group chat using its own Entra agent identity. No separate
-Graph app registration or client secret is configured in the container.
+A Microsoft 365 Agents Toolkit Python proof of concept that connects Teams to a
+shared Microsoft Foundry project.
 
-**Design:** Teams -> Azure Bot -> Foundry Activity endpoint -> hosted agent ->
-Microsoft Graph (chat RSC) + Foundry model -> Teams.
+## Behavior
 
-The [architecture document](docs/architecture.md) describes the components,
-request flow, identity and authorization model, security considerations, and
-design decisions, with Microsoft references.
+- Uses `AIProjectClient` and the Responses API with `DefaultAzureCredential`.
+- Answers personal-chat messages without reading Microsoft Graph history.
+- Responds in group chats only when mentioned.
+- Reads a bounded window of recent group-chat messages after the chat grants
+  `ChatMessage.Read.Chat` resource-specific consent.
+- Ignores channel messages and treats chat history as untrusted model context.
+- Uses one user-assigned managed identity for App Service, Azure Bot, Foundry,
+  and Microsoft Graph.
 
-Open the [secretless architecture and setup walkthrough](docs/secretless-setup.html)
-for a portable HTML guide covering the end-to-end flow, identity boundaries,
-deployment and chat consent steps, live acceptance checks, and official sources.
-It can be opened directly in a browser without a server.
+The Teams agent lifecycle is rooted in `m365agents*.yml`. The shared Foundry
+account, project, and model are independently managed under
+`foundry-platform/`.
 
-## Prerequisites
+## Configure
 
-- Azure CLI and Azure Developer CLI, authenticated to the intended tenant.
-- AZD extensions `azure.ai.agents` >= `1.0.0-beta.19` and
-  `azure.ai.projects` >= `1.0.0-beta.13` (the versions used for this review).
-- Permission to create Foundry resources and Azure Bot/Teams channels, plus
-  Foundry data-plane access for deploying agents. See
-  [hosted-agent permissions](https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agent-permissions).
-- Model availability/quota for `gpt-4.1-mini` in the selected region.
-- Teams custom-app upload and group-chat RSC allowed by tenant policy.
-- Python 3.10+ for local development; hosted deployment uses Python 3.13.
-- Testers assigned **Foundry Agent Consumer** at the agent or project scope
-  for the configured `BotServiceRbac` authorization.
+Set these values for the workflow you want to run:
 
-## Provision and deploy
+- Local Teams debugging: `env/.env.local.user`
+- Agents Playground: `env/.env.playground.user`
+- Deployed Teams testing: `env/.env.dev`
 
-Create a fresh AZD environment for this project:
-
-```bash
-azd env new foundry-teams-chat-agent-poc
-azd env set AZURE_SUBSCRIPTION_ID "<subscription-id>"
-azd env set AZURE_LOCATION "swedencentral"
-azd env set AZURE_RESOURCE_GROUP "rg-foundry-teams-chat-agent-poc"
-azd env set TEAMS_APP_VERSION "1.0.0"
+```dotenv
+AZURE_AI_PROJECT_ENDPOINT=https://<account>.services.ai.azure.com/api/projects/<project>
+AZURE_AI_MODEL_DEPLOYMENT_NAME=gpt-4.1-mini
+GRAPH_HISTORY_MESSAGE_COUNT=10
 ```
 
-Then:
+Local developer credentials can test Foundry calls, but they do not reproduce
+the deployed application's group-chat RSC identity.
+
+## Credential flow
+
+`DefaultAzureCredential` is the outbound credential chain. In the deployed App
+Service, `AZURE_CLIENT_ID` selects the provisioned user-assigned managed
+identity; locally, Azure CLI or VS Code credentials can satisfy the chain.
+
+The application passes that credential—not a reusable raw token—to both
+downstream clients:
+
+1. The Graph history reader requests a token for
+   `https://graph.microsoft.com/.default`. Microsoft Graph additionally checks
+   that the installed app has `ChatMessage.Read.Chat` consent for the requested
+   group chat.
+2. `AIProjectClient` requests Foundry-scoped tokens and configures its
+   OpenAI-compatible Responses client to use them for inference.
+
+Incoming Bot Service authentication remains separate and is handled by the
+Microsoft 365 Agents SDK connection manager.
+
+## Agents Playground
+
+In VS Code, run **Debug in Microsoft 365 Agents Playground**. This provisions
+the local Playground tooling, starts the Python agent on port 3978, and opens
+the Playground.
+
+## Local Teams debugging
+
+Sign in to Microsoft 365 and Azure through Agents Toolkit, then run one of:
+
+- **Debug in Teams (Edge)**
+- **Debug in Teams (Chrome)**
+- **Debug in Teams (Desktop)**
+
+The workflow creates the local app registration, starts a development tunnel,
+packages the app, and starts the Python process.
+
+## Deployed Teams testing
+
+Configure `env/.env.dev`, then run:
 
 ```bash
-azd provision --no-prompt
-azd deploy --no-prompt
+atk auth login azure
+atk auth login m365
+atk provision --env dev -i false
+atk deploy --env dev -i false
 ```
 
-Provisioning creates the Foundry account, project, and model from
-[infra/main.bicep](infra/main.bicep). Code deployment creates the hosted agent
-and its Activity bot/channel. The post-deploy hook discovers the bot application
-ID, calls `azd ai agent pack`, and adds the POC's chat-scoped RSC declaration.
-It fails rather than fabricating a package when Microsoft 365 packaging fails.
+Grant the generated user-assigned managed identity access to the shared Foundry
+project. Install the generated app package in a test group chat, approve its
+request to read that chat's messages, and mention the agent.
 
-Outputs:
-
-- `foundry-teams-chat-agent-poc.zip`: the package to upload to Teams.
-- `appPackage/manifest.json`: the generated manifest for inspection.
-
-The builder preserves the generated Teams title ID, bot/agent ID, and icons. It
-replaces a placeholder `webApplicationInfo.resource` (such as
-`api://example.com`) with Microsoft's documented RSC value
-`https://RscBasedStoreApp`. It advertises only personal and group-chat scopes,
-disables files, requests only `ChatMessage.Read.Chat` application RSC, and adds
-a description explaining how recent group-chat messages are used. It then
-validates the final manifest before writing the package. The checked-in
-[manifest template](appPackage/manifest.template.json) is illustrative, not the
-source of the ownership-bound package.
-
-### Change the Teams app version
-
-Set the version once in the active AZD environment:
+## Tests
 
 ```bash
-azd env set TEAMS_APP_VERSION "1.0.1"
-azd deploy --no-prompt
+python -m pytest tests -q
 ```
 
-This setting is required for existing environments too. Both post-deploy hooks
-validate it and pass it explicitly to `azd ai agent pack --app-version`.
-If the agent deployed successfully but the hook failed because this value was
-missing, set it and run `azd hooks run postdeploy` to retry packaging without
-redeploying. Preserve the current version in `appPackage/manifest.json` for a
-retry, or choose a higher version for a Teams app update.
-The `azure.ai.agents` beta.19 extension does not interpolate environment
-placeholders in `activity.publish.appVersion`, so that field is omitted from
-[azure.yaml](azure.yaml). Use a three-part numeric version (`major.minor.patch`).
-The extension's automatic raw package is not the POC deliverable: use the
-versioned, RSC-modified `foundry-teams-chat-agent-poc.zip` produced by the post-deploy hook.
-For manifest or permission changes, upload/update the regenerated Teams package
-and grant any new consent; deployment does not update installed Teams apps.
-
-### Publish without custom app upload
-
-If your tenant blocks custom app upload, set `TEAMS_PUBLISH_TO_M365` to `true`
-so the post-deploy hook also runs `azd ai agent publish` with the
-no-admin-approval `shared` scope:
-
-```bash
-azd env set TEAMS_PUBLISH_TO_M365 true
-azd hooks run postdeploy
-```
-
-That Foundry-generated app does not include group-chat history consent. See
-[Publish through Foundry instead of uploading](docs/TEAMS_APP_SETUP.md#publish-through-foundry-instead-of-uploading).
-
-## Run the demo
-
-Follow the [Teams setup guide](docs/TEAMS_APP_SETUP.md):
-
-1. Upload the generated package, then **add it to a test group chat**.
-2. Review and grant its permission to read that chat's messages.
-3. Send a context message, then mention the bot and ask about that message.
-4. Confirm unmentioned group-chat messages produce no response.
-
-Personal installation alone does not grant group-chat history access.
-Team/channel messages, Copilot, file uploads, delegated sign-in, and durable
-application-managed memory are out of scope.
-
-**Before presenting this as proven:** complete the
-[live acceptance criteria](docs/architecture.md#9-live-acceptance-criteria),
-including runtime token identity, allowed-chat access, denied-chat access,
-and revocation. Offline tests do not prove Teams consent or Graph authorization.
-
-## Local development and tests
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r src/foundry-teams-chat-agent/requirements.txt pytest
-python -m pytest src/foundry-teams-chat-agent/tests -q
-
-export AZURE_AI_PROJECT_ENDPOINT="https://<account>.services.ai.azure.com/api/projects/<project>"
-export AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-4.1-mini"
-python src/foundry-teams-chat-agent/main.py
-```
-
-The Activity host exposes `POST /activity/messages` on port `8088` by default.
-Developer credentials can test model access but do not reproduce the deployed
-agent's application-only RSC identity. Do not add a Graph client secret to
-work around a local authorization failure.
-
-Read-only hook check (no cloud calls or generated files):
-
-```bash
-BOT_PROVISION_DRY_RUN=true \
-AZURE_SUBSCRIPTION_ID="<subscription-id>" \
-AZURE_RESOURCE_GROUP="rg-foundry-teams-chat-agent-poc" \
-AGENT_FOUNDRY_TEAMS_CHAT_AGENT_BOT_NAME="<deployed-bot-name>" \
-TEAMS_APP_VERSION="1.0.1" \
-sh scripts/provision-bot.sh
-```
+The tests intentionally focus on the POC's critical behavior and package
+contract rather than exhaustive coverage.

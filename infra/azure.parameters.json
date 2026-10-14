@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "resourceBaseName": {
+      "value": "bot${{RESOURCE_SUFFIX}}"
+    },
+    "azureAiProjectEndpoint": {
+      "value": "${{AZURE_AI_PROJECT_ENDPOINT}}"
+    },
+    "azureAiModelDeploymentName": {
+      "value": "${{AZURE_AI_MODEL_DEPLOYMENT_NAME}}"
+    },
+    "graphHistoryMessageCount": {
+      "value": "${{GRAPH_HISTORY_MESSAGE_COUNT}}"
+    },
+    "webAppSKU": {
+      "value": "B1"
+    },
+    "botDisplayName": {
+      "value": "demo-foundry-agent"
+    },
+    "linuxFxVersion": {
+      "value": "PYTHON|3.11"
+    }
+  }
+}

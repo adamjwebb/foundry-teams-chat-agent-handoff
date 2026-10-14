@@ -1,0 +1,59 @@
+{
+    "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.30/MicrosoftTeams.schema.json",
+    "manifestVersion": "1.30",
+    "version": "1.0.0",
+    "id": "${{TEAMS_APP_ID}}",
+    "developer": {
+        "name": "Demo Foundry Agent",
+        "websiteUrl": "https://learn.microsoft.com/azure/ai-foundry/",
+        "privacyUrl": "https://learn.microsoft.com/azure/ai-foundry/",
+        "termsOfUseUrl": "https://learn.microsoft.com/azure/ai-foundry/"
+    },
+    "icons": {
+        "color": "color.png",
+        "outline": "outline.png"
+    },
+    "name": {
+        "short": "demo-foundry-agent${{APP_NAME_SUFFIX}}",
+        "full": "Demo Foundry Agent"
+    },
+    "description": {
+        "short": "Answers questions with a Microsoft Foundry model.",
+        "full": "Answers questions in personal chats and consenting Teams group chats. When mentioned in a group chat, it sends a bounded window of recent messages to the configured Microsoft Foundry model and does not persist the history."
+    },
+    "accentColor": "#FFFFFF",
+    "bots": [
+        {
+            "botId": "${{BOT_ID}}",
+            "scopes": [
+                "groupChat",
+                "personal"
+            ],
+            "supportsFiles": false,
+            "isNotificationOnly": false,
+            "supportsTargetedMessages": false
+        }
+    ],
+    "composeExtensions": [],
+    "configurableTabs": [],
+    "staticTabs": [],
+    "permissions": [
+        "identity",
+        "messageTeamMembers"
+    ],
+    "webApplicationInfo": {
+        "id": "${{BOT_ID}}",
+        "resource": "https://RscBasedStoreApp"
+    },
+    "authorization": {
+        "permissions": {
+            "resourceSpecific": [
+                {
+                    "name": "ChatMessage.Read.Chat",
+                    "type": "Application"
+                }
+            ]
+        }
+    },
+    "validDomains": []
+}
