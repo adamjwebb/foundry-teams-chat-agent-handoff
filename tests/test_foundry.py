@@ -19,15 +19,37 @@ from foundry import (
 def test_config_reads_foundry_settings():
     config = Config(
         {
-            "AZURE_AI_PROJECT_ENDPOINT": "https://example.test/project",
+            "AZURE_AI_PROJECT_ENDPOINT": (
+                "https://example.test/api/projects/example-project"
+            ),
             "AZURE_AI_MODEL_DEPLOYMENT_NAME": "gpt-4.1-mini",
             "GRAPH_HISTORY_MESSAGE_COUNT": "25",
         }
     )
 
-    assert config.project_endpoint == "https://example.test/project"
+    assert config.project_endpoint == (
+        "https://example.test/api/projects/example-project"
+    )
     assert config.model_deployment_name == "gpt-4.1-mini"
     assert config.graph_history_message_count == 25
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "https://example.test/api/projects/example-project/agents/example-agent",
+        "https://example.test/openai/deployments/example-model",
+        "not-a-url",
+    ],
+)
+def test_config_rejects_non_project_endpoint(endpoint):
+    with pytest.raises(RuntimeError, match="Foundry project endpoint"):
+        Config(
+            {
+                "AZURE_AI_PROJECT_ENDPOINT": endpoint,
+                "AZURE_AI_MODEL_DEPLOYMENT_NAME": "model",
+            }
+        )
 
 
 @pytest.mark.parametrize("count", ["0", "51", "invalid"])
@@ -35,7 +57,9 @@ def test_config_rejects_invalid_history_count(count):
     with pytest.raises(RuntimeError, match="GRAPH_HISTORY_MESSAGE_COUNT"):
         Config(
             {
-                "AZURE_AI_PROJECT_ENDPOINT": "https://example.test/project",
+                "AZURE_AI_PROJECT_ENDPOINT": (
+                    "https://example.test/api/projects/example-project"
+                ),
                 "AZURE_AI_MODEL_DEPLOYMENT_NAME": "model",
                 "GRAPH_HISTORY_MESSAGE_COUNT": count,
             }
