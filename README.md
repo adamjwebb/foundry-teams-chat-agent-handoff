@@ -66,6 +66,20 @@ In VS Code, run **Debug in Microsoft 365 Agents Playground**. This provisions
 the local Playground tooling, starts the Python agent on port 3978, and opens
 the Playground.
 
+> [!NOTE]
+> **Use for:** Fast local debugging of personal-chat responses, Foundry
+> connectivity, and model prompts, with Python breakpoints.
+>
+> **Requires:** Your local Python service and an Azure credential with Foundry
+> access. No Teams app installation, bot registration, or development tunnel is
+> needed; inference still calls the live Foundry model.
+>
+> **Limitations:** Playground simulates Teams conversations but does not create
+> real Teams chats or grant `ChatMessage.Read.Chat` consent. This agent's
+> group-chat path calls Microsoft Graph, so a simulated group chat cannot test
+> history retrieval and can return the chat-context error even when personal
+> chat works. See [step 6](docs/development-and-deployment.md#6-develop-locally-with-agents-playground).
+
 ## Local Teams debugging
 
 Sign in to Microsoft 365 and Azure through Agents Toolkit, then run one of:
@@ -76,6 +90,21 @@ Sign in to Microsoft 365 and Azure through Agents Toolkit, then run one of:
 
 The workflow creates the local app registration, starts a development tunnel,
 packages the app, and starts the Python process.
+
+> [!NOTE]
+> **Use for:** Debugging real Teams message handling, personal-chat responses,
+> and group-chat mention routing with local Python breakpoints.
+>
+> **Requires:** A Teams tenant that allows custom app installation, the local
+> bot app registration, and a running development tunnel. Stop Playground before
+> switching workflows; both generate the root `.env`.
+>
+> **Limitations:** In the current implementation, outbound Foundry and Graph
+> requests use your developer credential, not the local bot app identity.
+> Installing the app and granting chat-specific consent does not give that
+> developer credential the app's RSC access. You can inspect group-message
+> handling, but use deployed Teams testing for end-to-end group-history
+> verification. See [step 7](docs/development-and-deployment.md#7-debug-locally-in-teams-optional).
 
 ## Deployed Teams testing
 
@@ -91,6 +120,21 @@ atk deploy --env dev -i false
 Grant the generated user-assigned managed identity access to the shared Foundry
 project. Install the generated app package in a test group chat, approve its
 request to read that chat's messages, and mention the agent.
+
+> [!NOTE]
+> **Use for:** End-to-end verification of the deployed bot's personal-chat
+> responses and consenting group-chat history retrieval with its managed
+> identity.
+>
+> **Requires:** Deployed Azure resources, Foundry access for the managed identity,
+> and app installation with `ChatMessage.Read.Chat` consent in each test group
+> chat. Use non-sensitive messages because recent history is sent to Foundry.
+>
+> **Limitations:** This runs in Azure, not under the local Python debugger; use
+> App Service logs to investigate failures. Personal-chat success or personal app
+> installation does not prove group-chat access. Group replies require a real
+> bot mention, and Teams channels are unsupported.
+> See [step 11](docs/development-and-deployment.md#11-install-in-teams-and-verify-the-system).
 
 ## Tests
 
