@@ -7,9 +7,7 @@ param resourceBaseName string
 param azureAiProjectEndpoint string
 @description('Model deployment in the Microsoft Foundry project')
 param azureAiModelDeploymentName string
-@minValue(1)
-@maxValue(50)
-param graphHistoryMessageCount int = 10
+param graphHistoryMessageCount string = '10'
 
 param webAppSKU string
 param linuxFxVersion string
@@ -91,7 +89,7 @@ resource webApp 'Microsoft.Web/sites@2021-02-01' = {
         }
         {
           name: 'GRAPH_HISTORY_MESSAGE_COUNT'
-          value: string(graphHistoryMessageCount)
+          value: graphHistoryMessageCount
         }
         {
           name: 'BOT_TENANT_ID'
