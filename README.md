@@ -3,6 +3,12 @@
 A Microsoft 365 Agents Toolkit Python proof of concept that connects Teams to a
 shared Microsoft Foundry project.
 
+## Development and deployment guide
+
+Follow the [step-by-step guide](docs/development-and-deployment.md) to install
+the prerequisites, deploy Foundry, develop locally, deploy the Teams bot, and
+verify personal and consenting group chats.
+
 ## Behavior
 
 - Uses `AIProjectClient` and the Responses API with `DefaultAzureCredential`.
@@ -15,8 +21,8 @@ shared Microsoft Foundry project.
   and Microsoft Graph.
 
 The Teams agent lifecycle is rooted in `m365agents*.yml`. The shared Foundry
-account, project, and model are independently managed under
-`foundry-platform/`.
+account, project, and model are independently managed with AZD under
+[`foundry-platform/`](foundry-platform/README.md).
 
 ## Configure
 

@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+name: foundry-teams-chat-agent-platform
+resourceGroup: ${AZURE_RESOURCE_GROUP}
+
+infra:
+  provider: bicep
+  path: ./infra
+  module: main

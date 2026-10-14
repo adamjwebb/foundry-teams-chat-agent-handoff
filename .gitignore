@@ -21,6 +21,9 @@ env/.env.playground
 appPackage/build/
 devTools/
 
+# Foundry platform AZD environment state
+/foundry-platform/.azure/
+
 # Local tooling
 .mypy_cache/
 .ruff_cache/
