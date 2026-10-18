@@ -13,6 +13,8 @@ param handoffTenantId string = ''
 param handoffBrokerEnabled string = 'false'
 param handoffHumanObjectId string = ''
 param handoffTeamsCatalogAppId string = ''
+@description('Optional registered Entra app ID for Graph RSC; configure its managed-identity federation separately.')
+param graphClientId string = ''
 
 param webAppSKU string
 param linuxFxVersion string
@@ -83,6 +85,18 @@ resource webApp 'Microsoft.Web/sites@2021-02-01' = {
         {
           name: 'AZURE_CLIENT_ID'
           value: identity.properties.clientId
+        }
+        {
+          name: 'GRAPH_AUTH_MODE'
+          value: empty(graphClientId) ? 'default' : 'federated'
+        }
+        {
+          name: 'GRAPH_CLIENT_ID'
+          value: graphClientId
+        }
+        {
+          name: 'GRAPH_TENANT_ID'
+          value: identity.properties.tenantId
         }
         {
           name: 'AZURE_AI_PROJECT_ENDPOINT'

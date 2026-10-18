@@ -13,7 +13,7 @@ def test_manifest_limits_scopes_and_requests_only_chat_history_rsc():
     assert manifest["bots"][0]["scopes"] == ["groupChat", "personal"]
     assert manifest["bots"][0]["supportsFiles"] is False
     assert manifest["webApplicationInfo"] == {
-        "id": "${{BOT_ID}}",
+        "id": "${{GRAPH_CLIENT_ID}}",
         "resource": "https://RscBasedStoreApp",
     }
     assert manifest["authorization"]["permissions"]["resourceSpecific"] == [

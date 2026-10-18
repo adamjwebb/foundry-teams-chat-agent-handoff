@@ -56,8 +56,55 @@ parameter values to `infra/azure.parameters.json` before provisioning, for examp
 ```
 
 These are entries inside the existing `parameters` object, not a complete file.
-Do not commit real tenant/person details to a shared fork. No new Toolkit
-environment variable substitution is mandatory for the original application.
+Do not commit real tenant/person details to a shared fork. Managed-identity
+deployments also need the registered Graph identity described below.
+
+### Deployed Graph identity (required for RSC)
+
+Teams RSC requires an **Entra app registration**, not just a managed identity's
+service principal. Keep the managed identity as the Azure Bot and Foundry
+identity, and create a separate single-tenant Entra app and service principal
+for Graph. Do not create a client secret.
+
+1. Register the Graph app in the same test tenant. Set `GRAPH_CLIENT_ID` in the
+   Toolkit cloud environment to its application/client ID **before provisioning
+   or building the package**. Local Teams provisioning automatically sets this
+   value to the local bot's registered app ID.
+2. Pass the registered client ID as `graphClientId` to either hosting template.
+   The App Service Toolkit parameters already read `GRAPH_CLIENT_ID`. The
+   template sets `GRAPH_AUTH_MODE=federated`, `GRAPH_CLIENT_ID`, and
+   `GRAPH_TENANT_ID`; `AZURE_CLIENT_ID` remains the bot managed identity.
+3. After provisioning the managed identity, add a federated identity credential
+   to the registered Graph app. Its issuer is
+   `https://login.microsoftonline.com/<tenant-id>/v2.0`, subject is the managed
+   identity's **principal/object ID** (not client ID), and audience is
+   `api://AzureADTokenExchange`. For example, create a private JSON file:
+
+   ```json
+   {
+     "name": "handoff-managed-identity",
+     "issuer": "https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/v2.0",
+     "subject": "55555555-5555-4555-8555-555555555555",
+     "audiences": ["api://AzureADTokenExchange"]
+   }
+   ```
+
+   Replace both synthetic identities, then run
+   `az ad app federated-credential create --id <registered-graph-client-id> --parameters <private-json-file>`.
+4. Check the built manifest: `bots[0].botId` is the bot managed identity's client
+   ID, while `webApplicationInfo.id` is the **registered Graph app's client ID**.
+   Graph checks RSC and self-installation permissions against that registered
+   identity. Each Teams app must have its own Entra application mapping.
+5. For the broker, grant the two Graph application permissions listed below to
+   the **registered Graph app's service principal** and obtain admin consent.
+   Foundry User and AcrPull remain on the managed identity, not the Graph app.
+
+At runtime, `ManagedIdentityCredential` obtains an assertion for the token
+exchange audience and `ClientAssertionCredential` exchanges it for a Graph
+token. It does not change incoming bot authentication or Foundry authentication.
+Missing federation or permissions is an error, not a fallback to another user.
+The original `default` and local `bot` Graph modes remain available, but an
+MI-only manifest is not a substitute for a registered RSC app.
 
 ### Alternative hosting: Container Apps
 
@@ -78,7 +125,8 @@ az acr build --registry <registry-name> --image teams-handoff:handoff-demo .
 Deploy the same template with the same parameters and `deployApp=true` to create
 the bot and HTTPS container endpoint. If you change the image tag, pass the same
 `imageTag` to the template and the registry build. Assign the runtime identity
-Foundry User on your project and the Graph roles listed below, then publish and
+Foundry User on your project; configure the registered Graph identity above,
+then publish and
 install the Teams package exactly as for App Service. `BOT_ID` and `BOT_DOMAIN`
 are available as deployment outputs. Use the **catalog resource ID**, not
 `BOT_ID`, for `handoffTeamsCatalogAppId`.
@@ -113,9 +161,9 @@ full transcripts. Summaries are limited to 800 characters.
   tenant's Teams app policies. The upstream personal and `groupChat` scopes remain.
 - Set `HANDOFF_TEAMS_CATALOG_APP_ID` to the catalog resource's `teamsApp.id`,
   not the manifest app ID, `BOT_ID`, or the publication submission ID. An admin can
-  find it through the Graph app-catalog APIs. The published app's bot identity must
-  match the identity used by this running bot and its Graph credential.
-- Give the Graph-calling bot identity these **application** permissions and
+  find it through the Graph app-catalog APIs. The published bot ID must match
+  the running bot, and `webApplicationInfo.id` must match its Graph credential.
+- Give the Graph-calling registered app these **application** permissions and
   obtain tenant admin consent:
   - `Chat.Create`
   - `TeamsAppInstallation.ReadWriteAndConsentSelfForChat.All`
@@ -126,9 +174,9 @@ full transcripts. Summaries are limited to 800 characters.
 - Local real-Teams debugging uses the **local bot app/service principal** for
   Graph (`GRAPH_AUTH_MODE=bot`). Assign its permissions in Entra; keep its secret
   in the existing ignored Toolkit user environment.
-- Deployed testing uses the **user-assigned managed identity service principal**.
-  A tenant admin must assign the Graph application roles to that service
-  principal; granting them to a different local app registration is insufficient.
+- Deployed testing uses the **registered Graph app's service principal**, reached
+  through managed-identity federation. Assign Graph roles to that registration,
+  not the bot managed identity or a different local application.
 - Provide the normal bot messaging endpoint and a valid bot app ID (`BOT_ID` or
   the existing service-connection client ID) for proactive replies.
 - Set `HANDOFF_BROKER_ENABLED=true` and restart before starting the walkthrough.
@@ -221,16 +269,20 @@ python -m pytest tests -q
 
 Live deployment checks have verified Container Apps startup, rejection of
 unauthenticated bot requests, managed-identity model inference, summary generation,
-and correctly encoded deep-link parameters. The Teams app has been published in
-a test tenant, but the client still denied app access after a scoped allow/install
-change. **Neither complete live-Teams handoff walkthrough is confirmed.** Allow
-and install policy state must be effective in the client before testing; do not
-treat deployment success, backend inference, or a generated URL as handoff proof.
+and correctly encoded deep-link parameters. Scoped app approval and publication
+with a registered RSC app have now allowed personal installation in a fresh Teams
+client, including an authenticated welcome message from the deployed bot.
+**Neither complete live-Teams handoff walkthrough is confirmed yet.** Check the
+version actually shown in the client: an older session continued to show the
+previous package. Do not treat installation, backend inference, or a generated
+URL as handoff proof.
 
 - [Teams deep links and draft behavior](https://learn.microsoft.com/en-us/microsoftteams/platform/concepts/build-and-test/deep-link-teams)
 - [Graph chat creation](https://learn.microsoft.com/en-us/graph/api/chat-post?view=graph-rest-1.0)
 - [Install an app and grant its RSC](https://learn.microsoft.com/en-us/graph/api/chat-post-installedapps?view=graph-rest-1.0)
 - [Proactive bot messaging prerequisites](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/conversations/send-proactive-messages)
+- [Register the app and grant Teams RSC](https://learn.microsoft.com/en-us/microsoftteams/platform/graph-api/rsc/grant-resource-specific-consent)
+- [Configure an app to trust a managed identity](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation-config-app-trust-managed-identity)
 
 The upstream revision this fork started from did not include a license file.
 This fork does not resolve upstream licensing; confirm reuse rights with its

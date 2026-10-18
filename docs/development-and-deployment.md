@@ -278,7 +278,9 @@ The local workflow sets `GRAPH_AUTH_MODE=bot`, so outbound Graph calls use
 `ClientSecretCredential` with that same bot connection's tenant ID, client ID,
 and secret. Foundry calls still use your developer credential through
 `DefaultAzureCredential`; the local bot does not need a separate Foundry role.
-The deployed workflow continues to use its managed identity for both clients.
+The deployed workflow uses managed identity directly for Foundry and secretless
+federation to a registered Entra app for Graph RSC. See
+[deployed Graph identity setup](handoff-examples.md#deployed-graph-identity-required-for-rsc).
 
 Restart **Debug in Teams (Edge)** (or the Chrome/Desktop equivalent) after
 updating this code so the pre-launch tasks regenerate the root `.env`. Look
@@ -331,6 +333,7 @@ Keep the suffix stable on subsequent deployments.
 | `AZURE_AI_PROJECT_ENDPOINT` | The project endpoint from step 4, not an agent activity endpoint. |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Exact deployed model name from step 4. |
 | `GRAPH_HISTORY_MESSAGE_COUNT` | Number of recent group-chat messages to request; integer from `1` to `50`, default `10`. |
+| `GRAPH_CLIENT_ID` | Registered Entra application's client ID for Graph RSC, not the generated bot managed identity. |
 
 ATK writes generated IDs into this file during provisioning. Do not manually
 set `BOT_ID` or substitute `TEAMS_APP_ID` for it. The first is the bot
@@ -341,6 +344,12 @@ and never put secrets in it. Local `.user` files and the generated root `.env`
 are ignored by Git.
 
 ## 9. Provision the Teams app resources
+
+First create the registered Entra Graph app and set `GRAPH_CLIENT_ID` in the
+cloud environment. Follow the
+[secretless Graph identity setup](handoff-examples.md#deployed-graph-identity-required-for-rsc);
+its managed-identity trust can be added after provisioning supplies the principal
+ID. The manifest independently substitutes this ID and the generated `BOT_ID`.
 
 ```bash
 atk provision --env dev -i false
@@ -392,6 +401,11 @@ az role assignment create \
 atk deploy --env dev -i false
 ```
 
+Before installing the app, finish the Graph app's federated identity credential
+using the provisioned managed identity's principal ID. Grant Graph application
+roles only if enabling the broker; ordinary group history uses the app's
+chat-specific RSC consent, not a tenant-wide chat-read role.
+
 Deployment zip-uploads [the Python source](../src) to App Service. App Service
 builds the dependencies from [the requirements file](../src/requirements.txt)
 and starts Gunicorn with the aiohttp worker configured in
@@ -441,9 +455,10 @@ Installing the app personally does not grant group-chat access. Do not replace
 the scoped permission with tenant-wide `Chat.Read.All` or
 `ChatMessage.Read.All` permissions.
 
-The same managed identity is used for Bot Service authentication, Foundry
-inference, and Graph history reads. Foundry access comes from Azure RBAC;
-Graph access comes from Teams chat-specific consent. Channels are unsupported.
+The managed identity is used for Bot Service authentication and Foundry
+inference, and authenticates the separate registered Graph app through
+federation. Foundry access comes from Azure RBAC; Graph history access comes
+from Teams chat-specific consent for that registered app. Channels are unsupported.
 The application does not persist the retrieved history.
 
 ## 12. Make changes and redeploy
@@ -511,7 +526,7 @@ values and review data handling and operational requirements.
 | Model deployment fails | Check regional model/version availability and Global Standard quota for capacity 10. Change the platform deployment parameters or region rather than guessing a model endpoint. |
 | Foundry returns 401/403 | Check the project endpoint, Azure CLI login for local use, and project-scoped Foundry User assignment to the correct caller. In Azure the caller is the bot identity, not your developer user. Wait for propagation. |
 | Foundry model not found | Match `AZURE_AI_MODEL_DEPLOYMENT_NAME` to the actual model deployment output. Do not enter a published agent name. |
-| Personal chat works but group chat fails | Check that the app is installed and has `ChatMessage.Read.Chat` consent in that specific chat. Check logs for Graph errors and verify the package's bot identity matches the caller: the local bot app for local debugging, or the managed identity when deployed. |
+| Personal chat works but group chat fails | Check that the app is installed and has `ChatMessage.Read.Chat` consent in that specific chat. Verify `webApplicationInfo.id` matches the Graph caller: the local registered bot app or the deployed federated Graph app. The deployed bot managed identity remains a separate identity. |
 | Local Teams Graph request returns 403 with `AzureCliCredential` | Restart the full local Teams debug workflow to regenerate `.env` with `GRAPH_AUTH_MODE=bot`. Graph must use the installed bot's application identity, not your Azure CLI user. Foundry can still use `AzureCliCredential`. If Graph still returns 403, verify local-app installation and consent in that chat. |
 | Group chat produces no reply | Use a real Teams mention of this bot. Ordinary text containing its name is not a mention. Channel conversations are intentionally ignored. |
 | Local Teams bot returns 401 | Check the generated `.env` client ID, secret, and tenant ID, then rerun the local Teams debug workflow. Do not reuse Playground's anonymous runtime settings. |

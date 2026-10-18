@@ -14,6 +14,9 @@
     "graphHistoryMessageCount": {
       "value": "${{GRAPH_HISTORY_MESSAGE_COUNT}}"
     },
+    "graphClientId": {
+      "value": "${{GRAPH_CLIENT_ID}}"
+    },
     "webAppSKU": {
       "value": "B1"
     },

@@ -9,13 +9,15 @@ ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 
-@pytest.mark.parametrize("mode", [None, "default", "bot"])
+@pytest.mark.parametrize("mode", [None, "default", "bot", "federated"])
 def test_agent_selects_graph_identity_without_changing_foundry(monkeypatch, mode):
     settings = {
         "AZURE_AI_PROJECT_ENDPOINT": "https://example.test/api/projects/project",
         "AZURE_AI_MODEL_DEPLOYMENT_NAME": "model",
         "AZURE_CLIENT_ID": "managed-identity-id",
         "GRAPH_HISTORY_MESSAGE_COUNT": "10",
+        "GRAPH_TENANT_ID": "tenant-id",
+        "GRAPH_CLIENT_ID": "registered-rsc-app-id",
         "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID": "tenant-id",
         "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID": "bot-id",
         "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET": "test-secret",
@@ -29,6 +31,9 @@ def test_agent_selects_graph_identity_without_changing_foundry(monkeypatch, mode
 
     default_credential = Mock()
     bot_credential = Mock()
+    assertion_credential = Mock()
+    managed_identity_credential = Mock()
+    managed_identity_credential.return_value.get_token.return_value.token = "mi-assertion"
     gateway = Mock()
     client = Mock()
     client.get.return_value.json.return_value = {"value": []}
@@ -36,6 +41,8 @@ def test_agent_selects_graph_identity_without_changing_foundry(monkeypatch, mode
         "dotenv.load_dotenv": Mock(),
         "azure.identity.DefaultAzureCredential": default_credential,
         "azure.identity.ClientSecretCredential": bot_credential,
+        "azure.identity.ClientAssertionCredential": assertion_credential,
+        "azure.identity.ManagedIdentityCredential": managed_identity_credential,
         "foundry.FoundryModelGateway": gateway,
         "httpx.Client": Mock(return_value=client),
         "microsoft_agents.activity.load_configuration_from_env": Mock(return_value={}),
@@ -62,6 +69,17 @@ def test_agent_selects_graph_identity_without_changing_foundry(monkeypatch, mode
         bot_credential.assert_called_once_with("tenant-id", "bot-id", "test-secret")
         graph_credential = bot_credential.return_value
         default_credential.return_value.get_token.assert_not_called()
+    elif mode == "federated":
+        managed_identity_credential.assert_called_once_with(client_id="managed-identity-id")
+        tenant, client_id, get_assertion = assertion_credential.call_args.args
+        assert (tenant, client_id) == ("tenant-id", "registered-rsc-app-id")
+        assert get_assertion() == "mi-assertion"
+        managed_identity_credential.return_value.get_token.assert_called_once_with(
+            "api://AzureADTokenExchange/.default"
+        )
+        graph_credential = assertion_credential.return_value
+        default_credential.return_value.get_token.assert_not_called()
+        bot_credential.assert_not_called()
     else:
         bot_credential.assert_not_called()
         graph_credential = default_credential.return_value

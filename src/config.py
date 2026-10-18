@@ -68,9 +68,10 @@ class Config:
         self.managed_identity_client_id = env.get("AZURE_CLIENT_ID", "").strip() or None
 
         self.graph_auth_mode = env.get("GRAPH_AUTH_MODE", "default").strip()
-        if self.graph_auth_mode not in ("default", "bot"):
-            raise RuntimeError("GRAPH_AUTH_MODE must be 'default' or 'bot'")
+        if self.graph_auth_mode not in ("default", "bot", "federated"):
+            raise RuntimeError("GRAPH_AUTH_MODE must be 'default', 'bot', or 'federated'")
         self.graph_bot_credentials: tuple[str, str, str] | None = None
+        self.graph_federated_credentials: tuple[str, str] | None = None
         if self.graph_auth_mode == "bot":
             self.graph_bot_credentials = (
                 self._required(
@@ -82,6 +83,12 @@ class Config:
                 self._required(
                     env, "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET"
                 ),
+            )
+        elif self.graph_auth_mode == "federated":
+            self._required(env, "AZURE_CLIENT_ID")
+            self.graph_federated_credentials = (
+                self._required(env, "GRAPH_TENANT_ID"),
+                self._required(env, "GRAPH_CLIENT_ID"),
             )
 
         raw_count = env.get("GRAPH_HISTORY_MESSAGE_COUNT", "10")

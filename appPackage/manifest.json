@@ -42,7 +42,7 @@
         "messageTeamMembers"
     ],
     "webApplicationInfo": {
-        "id": "${{BOT_ID}}",
+        "id": "${{GRAPH_CLIENT_ID}}",
         "resource": "https://RscBasedStoreApp"
     },
     "authorization": {

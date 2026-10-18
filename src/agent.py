@@ -5,7 +5,10 @@ import os
 import httpx
 from aiohttp import ClientError
 from azure.core.exceptions import AzureError
-from azure.identity import ClientSecretCredential, DefaultAzureCredential
+from azure.identity import (
+    ClientAssertionCredential, ClientSecretCredential, DefaultAzureCredential,
+    ManagedIdentityCredential,
+)
 from dotenv import load_dotenv
 from microsoft_agents.activity import (
     Activity, ActivityTypes, Attachment, ConversationReference, load_configuration_from_env,
@@ -59,13 +62,20 @@ gateway = FoundryModelGateway(
     config.model_deployment_name,
     credential,
 )
-# Local Teams uses the installed bot's application identity for Graph RSC,
-# while Foundry continues to use the developer credential above.
-graph_credential = (
-    ClientSecretCredential(*config.graph_bot_credentials)
-    if config.graph_bot_credentials is not None
-    else credential
-)
+# RSC identifies an Entra app registration, which can trust the bot's managed
+# identity without changing the Bot Connector or Foundry identities.
+if config.graph_federated_credentials is not None:
+    graph_managed_identity = ManagedIdentityCredential(
+        client_id=config.managed_identity_client_id
+    )
+    graph_credential = ClientAssertionCredential(
+        *config.graph_federated_credentials,
+        lambda: graph_managed_identity.get_token("api://AzureADTokenExchange/.default").token,
+    )
+elif config.graph_bot_credentials is not None:
+    graph_credential = ClientSecretCredential(*config.graph_bot_credentials)
+else:
+    graph_credential = credential
 logger.info("Microsoft Graph authentication mode: %s", config.graph_auth_mode)
 graph_chat_history = GraphChatHistory(
     graph_credential,

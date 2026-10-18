@@ -62,6 +62,36 @@ def test_config_reads_bot_graph_credentials():
     assert config.graph_bot_credentials == ("tenant-id", "bot-id", "test-secret")
 
 
+def test_config_reads_secretless_federated_graph_credentials():
+    config = Config({
+        "AZURE_AI_PROJECT_ENDPOINT": "https://example.test/api/projects/project",
+        "AZURE_AI_MODEL_DEPLOYMENT_NAME": "model",
+        "AZURE_CLIENT_ID": "managed-identity-id",
+        "GRAPH_AUTH_MODE": "federated",
+        "GRAPH_TENANT_ID": "tenant-id",
+        "GRAPH_CLIENT_ID": "registered-rsc-app-id",
+    })
+
+    assert config.graph_bot_credentials is None
+    assert config.graph_federated_credentials == ("tenant-id", "registered-rsc-app-id")
+
+
+@pytest.mark.parametrize("setting", ["AZURE_CLIENT_ID", "GRAPH_TENANT_ID", "GRAPH_CLIENT_ID"])
+def test_federated_graph_auth_requires_its_own_complete_identity(setting):
+    env = {
+        "AZURE_AI_PROJECT_ENDPOINT": "https://example.test/api/projects/project",
+        "AZURE_AI_MODEL_DEPLOYMENT_NAME": "model",
+        "AZURE_CLIENT_ID": "managed-identity-id",
+        "GRAPH_AUTH_MODE": "federated",
+        "GRAPH_TENANT_ID": "tenant-id",
+        "GRAPH_CLIENT_ID": "registered-rsc-app-id",
+    }
+    env[setting] = " "
+
+    with pytest.raises(RuntimeError, match=f"{setting} is required"):
+        Config(env)
+
+
 @pytest.mark.parametrize("mode", ["", "developer", "bto"])
 def test_config_rejects_invalid_graph_auth_mode(mode):
     with pytest.raises(RuntimeError, match="GRAPH_AUTH_MODE"):

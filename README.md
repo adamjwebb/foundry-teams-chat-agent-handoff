@@ -40,8 +40,9 @@ verify personal and consenting group chats.
 - Reads a bounded window of recent group-chat messages after the chat grants
   `ChatMessage.Read.Chat` resource-specific consent.
 - Ignores channel messages and treats chat history as untrusted model context.
-- When deployed, uses one user-assigned managed identity for App Service,
-  Azure Bot, Foundry, and Microsoft Graph.
+- When deployed, uses a user-assigned managed identity for hosting, Azure Bot,
+  and Foundry. For Graph RSC, that identity authenticates a registered Entra
+  application through secretless federation.
 - In local Teams debugging, uses the local bot's app identity for Graph and
   your developer credential for Foundry.
 
@@ -80,7 +81,9 @@ clients:
    `https://graph.microsoft.com/.default`. Microsoft Graph additionally checks
    that the installed app has `ChatMessage.Read.Chat` consent for the requested
    group chat. Local Teams debugging uses `ClientSecretCredential` for the
-   installed local bot; deployed testing uses the managed identity.
+   installed local bot. Deployed testing uses `ClientAssertionCredential` for
+   the registered RSC app, backed by a managed-identity assertion. See
+   [deployed Graph identity setup](docs/handoff-examples.md#deployed-graph-identity-required-for-rsc).
 2. `AIProjectClient` requests Foundry-scoped tokens and configures its
    OpenAI-compatible Responses client to use them for inference. This always
    uses `DefaultAzureCredential`, independently of local Graph authentication.
