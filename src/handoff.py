@@ -156,10 +156,15 @@ class HandoffBroker:
         self.store = store
         self.graph = graph
         self.send_origin = send_origin
+        self._notification_locks: dict[str, asyncio.Lock] = {}
 
-    async def _notify(self, request: HandoffRequest, message: str) -> None:
+    async def _notify(self, request: HandoffRequest, message: str, *, pending: bool = False) -> None:
+        lock = self._notification_locks.setdefault(request.request_id, asyncio.Lock())
         try:
-            await self.send_origin(request, message)
+            async with lock:
+                if pending and request.state != "awaiting_delivery":
+                    return
+                await self.send_origin(request, message)
         except HandoffOperationError:
             logger.error("Handoff %s origin notification failed; state=%s", request.request_id, request.state)
 
@@ -202,6 +207,7 @@ class HandoffBroker:
                     f"Handoff {request.request_id}: support group created. Waiting for Teams "
                     "to provide the installed bot conversation; summary not sent yet. "
                     "If this does not complete, check app installation and bot messaging logs.",
+                    pending=True,
                 )
         except HandoffOperationError as error:
             await self._failed(request, error)

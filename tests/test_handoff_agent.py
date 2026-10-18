@@ -201,3 +201,33 @@ def test_ordinary_group_mention_keeps_existing_model_behavior(agent_module):
         module.gateway.ask.assert_called_once_with("Help", ["Alice: VPN is down"])
         assert not module.handoff_store.histories
     asyncio.run(run())
+
+
+def test_sdk_response_validation_failure_records_uncertain_delivery(agent_module):
+    async def run():
+        from handoff import HandoffBroker
+        from microsoft_agents.activity import ResourceResponse
+        from test_handoff import FakeGraph, make_request
+        from handoff import HandoffMode
+        module = agent_module
+        notifications = []
+
+        async def notify(request, message):
+            notifications.append(message)
+        broker = HandoffBroker(module.handoff_store, FakeGraph(), notify)
+        module.handoff_broker = broker
+        request = make_request(module.handoff_store, HandoffMode.BROKER)
+        module.handoff_store.confirm(request.request_id, TENANT, USER, "personal-chat")
+        await broker.start(request, HUMAN)
+        turn = context(chat=request.chat_id, kind="groupChat")
+
+        async def invalid_sdk_response(_activity):
+            return ResourceResponse.model_validate({"id": {"unexpected": "object"}})
+        turn.send_activity.side_effect = invalid_sdk_response
+        await module.on_members_added(turn, None)
+        assert request.state == "uncertain"
+        assert request.failure_stage == "send"
+        assert "uncertain" in notifications[-1]
+        await module.on_members_added(turn, None)
+        assert turn.send_activity.await_count == 1
+    asyncio.run(run())

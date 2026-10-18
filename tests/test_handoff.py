@@ -275,3 +275,34 @@ def test_cancellation_marks_inflight_create_uncertain():
             await task
         assert request.state == "uncertain"
     asyncio.run(run())
+
+
+def test_completion_notification_cannot_be_overtaken_by_stale_pending_message():
+    async def run():
+        store = HandoffStore()
+        graph = FakeGraph()
+        pending_entered = asyncio.Event()
+        release_pending = asyncio.Event()
+        notifications = []
+
+        async def notify(request, message):
+            if "Waiting for Teams" in message:
+                pending_entered.set()
+                await release_pending.wait()
+            notifications.append(message)
+
+        broker = HandoffBroker(store, graph, notify)
+        request = make_request(store, HandoffMode.BROKER)
+        store.confirm(request.request_id, TENANT, USER, "personal-chat")
+        starting = asyncio.create_task(broker.start(request, HUMAN))
+        await pending_entered.wait()
+
+        async def send(text):
+            pass
+        delivering = asyncio.create_task(broker.on_group_available(request.chat_id, send))
+        await asyncio.sleep(0)
+        release_pending.set()
+        await asyncio.gather(starting, delivering)
+        assert request.state == "delivered"
+        assert "delivered" in notifications[-1]
+    asyncio.run(run())

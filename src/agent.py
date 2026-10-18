@@ -146,7 +146,7 @@ async def send_handoff_origin(request: HandoffRequest, message: str) -> None:
             await context.send_activity(message)
     try:
         await adapter.continue_conversation(bot_id, reference.get_continuation_activity(), send)
-    except (ClientError, AzureError, httpx.HTTPError, RuntimeError, OSError) as error:
+    except (ClientError, AzureError, httpx.HTTPError, RuntimeError, OSError, ValueError) as error:
         raise HandoffOperationError("notify", "Could not notify the original conversation.", uncertain=True) from error
 
 
@@ -191,7 +191,7 @@ async def deliver_support_summary(context: TurnContext) -> bool:
     async def send_summary(text: str):
         try:
             await context.send_activity(Activity(type=ActivityTypes.message, text=text, text_format="plain"))
-        except (ClientError, AzureError, httpx.HTTPError, RuntimeError, OSError) as error:
+        except (ClientError, AzureError, httpx.HTTPError, RuntimeError, OSError, ValueError) as error:
             raise HandoffOperationError(
                 "send", "Bot summary delivery is unconfirmed; inspect the support group before retrying.",
                 uncertain=True,
