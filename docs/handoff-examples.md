@@ -283,9 +283,22 @@ with a registered RSC app have now allowed personal installation in a fresh Team
 client, including an authenticated welcome message from the deployed bot.
 The complete deep-link walkthrough is verified: requester confirmation opened
 the configured human's real chat with an unsent approved summary, and selecting
-Send delivered the requester-authored message. The broker's first live attempt
-identified a separate self-installation identity requirement, now corrected in
-the runtime wiring; **its complete live walkthrough is still pending**.
+Send delivered the requester-authored message. The complete broker walkthrough
+is also verified: confirmation created the requester/human group, installed the
+app with RSC, delivered the matching approved summary as the bot, and notified
+the requester with a working group link. A repeated confirmation was rejected;
+runtime logs show only one group creation and installation, and a subsequent
+Graph read confirms exactly one bot message matching the approved summary.
+
+The broker's initial installation failure identified the separate bot-identity
+requirement documented above. The diagnostic bot installation was removed from
+the earlier partial group before redeploying. The final registered reader has
+no Graph application roles and successfully reads the consenting chat through
+RSC. Ordinary support-chat messages received no bot reply. A native Teams
+bot-mention smoke test was not completed through browser automation; mention
+suppression is covered by the automated SDK-shaped tests. Human reading or
+acceptance was not claimed.
+
 Check the version actually shown in the client: an older session continued to
 show the previous package. Do not treat installation, backend inference, or a
 generated URL as handoff proof.
