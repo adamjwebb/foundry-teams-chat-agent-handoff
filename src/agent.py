@@ -72,10 +72,14 @@ if config.graph_federated_credentials is not None:
         *config.graph_federated_credentials,
         lambda: graph_managed_identity.get_token("api://AzureADTokenExchange/.default").token,
     )
+    # Self-installation identifies the app's bot, not its separate RSC reader.
+    graph_broker_credential = graph_managed_identity
 elif config.graph_bot_credentials is not None:
     graph_credential = ClientSecretCredential(*config.graph_bot_credentials)
+    graph_broker_credential = graph_credential
 else:
     graph_credential = credential
+    graph_broker_credential = credential
 logger.info("Microsoft Graph authentication mode: %s", config.graph_auth_mode)
 graph_chat_history = GraphChatHistory(
     graph_credential,
@@ -166,7 +170,7 @@ def get_handoff_broker() -> HandoffBroker:
         handoff_http = httpx.AsyncClient()
         handoff_broker = HandoffBroker(
             handoff_store,
-            GraphHandoffClient(graph_credential, config.handoff.catalog_app_id, handoff_http),
+            GraphHandoffClient(graph_broker_credential, config.handoff.catalog_app_id, handoff_http),
             send_handoff_origin,
         )
     return handoff_broker

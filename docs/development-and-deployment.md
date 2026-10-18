@@ -403,8 +403,9 @@ atk deploy --env dev -i false
 
 Before installing the app, finish the Graph app's federated identity credential
 using the provisioned managed identity's principal ID. Grant Graph application
-roles only if enabling the broker; ordinary group history uses the app's
-chat-specific RSC consent, not a tenant-wide chat-read role.
+roles to the **bot managed identity** only if enabling the broker; ordinary
+group history uses the registered reader's chat-specific RSC consent, not a
+tenant-wide chat-read role. The reader does not need the broker roles.
 
 Deployment zip-uploads [the Python source](../src) to App Service. App Service
 builds the dependencies from [the requirements file](../src/requirements.txt)

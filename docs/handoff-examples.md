@@ -93,15 +93,22 @@ for Graph. Do not create a client secret.
    `az ad app federated-credential create --id <registered-graph-client-id> --parameters <private-json-file>`.
 4. Check the built manifest: `bots[0].botId` is the bot managed identity's client
    ID, while `webApplicationInfo.id` is the **registered Graph app's client ID**.
-   Graph checks RSC and self-installation permissions against that registered
-   identity. Each Teams app must have its own Entra application mapping.
+   Graph checks chat-history RSC against that registered identity. The broker's
+   self-installation call instead uses the **bot identity**. Each Teams app must
+   have its own Entra application mapping.
 5. For the broker, grant the two Graph application permissions listed below to
-   the **registered Graph app's service principal** and obtain admin consent.
-   Foundry User and AcrPull remain on the managed identity, not the Graph app.
+   the **bot managed identity's service principal** and obtain admin consent.
+   The registered RSC reader needs no tenant-wide Graph application roles.
+   Foundry User and AcrPull also remain on the managed identity.
 
 At runtime, `ManagedIdentityCredential` obtains an assertion for the token
 exchange audience and `ClientAssertionCredential` exchanges it for a Graph
-token. It does not change incoming bot authentication or Foundry authentication.
+token for ordinary group-chat history. Broker creation and self-installation
+use the bot managed identity directly: a registered RSC reader with the same
+broker roles was rejected with `403 Caller is not authorized`, while the bot
+identity installed the same app into the same chat successfully. Do not broaden
+installation permissions to work around that identity mismatch.
+This does not change incoming bot authentication or Foundry authentication.
 Missing federation or permissions is an error, not a fallback to another user.
 The original `default` and local `bot` Graph modes remain available, but an
 MI-only manifest is not a substitute for a registered RSC app.
@@ -162,8 +169,9 @@ full transcripts. Summaries are limited to 800 characters.
 - Set `HANDOFF_TEAMS_CATALOG_APP_ID` to the catalog resource's `teamsApp.id`,
   not the manifest app ID, `BOT_ID`, or the publication submission ID. An admin can
   find it through the Graph app-catalog APIs. The published bot ID must match
-  the running bot, and `webApplicationInfo.id` must match its Graph credential.
-- Give the Graph-calling registered app these **application** permissions and
+  the running bot, and `webApplicationInfo.id` must match the Graph history
+  reader's credential.
+- Give the broker's bot identity these **application** permissions and
   obtain tenant admin consent:
   - `Chat.Create`
   - `TeamsAppInstallation.ReadWriteAndConsentSelfForChat.All`
@@ -174,9 +182,10 @@ full transcripts. Summaries are limited to 800 characters.
 - Local real-Teams debugging uses the **local bot app/service principal** for
   Graph (`GRAPH_AUTH_MODE=bot`). Assign its permissions in Entra; keep its secret
   in the existing ignored Toolkit user environment.
-- Deployed testing uses the **registered Graph app's service principal**, reached
-  through managed-identity federation. Assign Graph roles to that registration,
-  not the bot managed identity or a different local application.
+- Deployed broker calls use the **bot managed identity's service principal**.
+  The separate registered Graph app is reached through federation only for
+  RSC-scoped history. Do not assign the broker roles to that reader or a
+  different local application.
 - Provide the normal bot messaging endpoint and a valid bot app ID (`BOT_ID` or
   the existing service-connection client ID) for proactive replies.
 - Set `HANDOFF_BROKER_ENABLED=true` and restart before starting the walkthrough.
@@ -272,10 +281,14 @@ unauthenticated bot requests, managed-identity model inference, summary generati
 and correctly encoded deep-link parameters. Scoped app approval and publication
 with a registered RSC app have now allowed personal installation in a fresh Teams
 client, including an authenticated welcome message from the deployed bot.
-**Neither complete live-Teams handoff walkthrough is confirmed yet.** Check the
-version actually shown in the client: an older session continued to show the
-previous package. Do not treat installation, backend inference, or a generated
-URL as handoff proof.
+The complete deep-link walkthrough is verified: requester confirmation opened
+the configured human's real chat with an unsent approved summary, and selecting
+Send delivered the requester-authored message. The broker's first live attempt
+identified a separate self-installation identity requirement, now corrected in
+the runtime wiring; **its complete live walkthrough is still pending**.
+Check the version actually shown in the client: an older session continued to
+show the previous package. Do not treat installation, backend inference, or a
+generated URL as handoff proof.
 
 - [Teams deep links and draft behavior](https://learn.microsoft.com/en-us/microsoftteams/platform/concepts/build-and-test/deep-link-teams)
 - [Graph chat creation](https://learn.microsoft.com/en-us/graph/api/chat-post?view=graph-rest-1.0)
