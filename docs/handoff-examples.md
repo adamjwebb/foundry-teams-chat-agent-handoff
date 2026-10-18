@@ -59,6 +59,35 @@ These are entries inside the existing `parameters` object, not a complete file.
 Do not commit real tenant/person details to a shared fork. No new Toolkit
 environment variable substitution is mandatory for the original application.
 
+### Alternative hosting: Container Apps
+
+If App Service is unavailable in your subscription, `infra/containerapps.bicep`
+hosts the same bot using `Dockerfile` and managed identity. It creates a private
+Basic Container Registry and a Consumption environment with exactly one warm
+replica. There is no automatic scale-to-zero, horizontal scaling, or additional
+state store. Registry storage and the warm replica incur charges.
+
+Deploy that template first with `deployApp=false` and your normal project/model
+and handoff parameters to create the registry, identity, and environment. Read
+`REGISTRY_NAME` from the deployment outputs, then build from the repository root:
+
+```powershell
+az acr build --registry <registry-name> --image teams-handoff:handoff-demo .
+```
+
+Deploy the same template with the same parameters and `deployApp=true` to create
+the bot and HTTPS container endpoint. If you change the image tag, pass the same
+`imageTag` to the template and the registry build. Assign the runtime identity
+Foundry User on your project and the Graph roles listed below, then publish and
+install the Teams package exactly as for App Service. `BOT_ID` and `BOT_DOMAIN`
+are available as deployment outputs. Use the **catalog resource ID**, not
+`BOT_ID`, for `handoffTeamsCatalogAppId`.
+
+Set the final catalog ID and enable the broker **before** the walkthrough.
+Changing a container image or environment variable starts a new process and
+loses the same in-memory state as an App Service restart. Remove the bot from
+previous support groups before replacing the process.
+
 ## Example 1: direct-human-chat deep link
 
 1. Start **Debug in Teams** or install the deployed personal app.
@@ -190,8 +219,13 @@ SDK-shaped command integration:
 python -m pytest tests -q
 ```
 
-Live-tenant walkthroughs are **not yet performed**. They require your tenant's
-target identities, published app, admin consent, and a running bot endpoint.
+Live deployment checks have verified Container Apps startup, rejection of
+unauthenticated bot requests, managed-identity model inference, summary generation,
+and correctly encoded deep-link parameters. The Teams app has been published in
+a test tenant, but the client still denied app access after a scoped allow/install
+change. **Neither complete live-Teams handoff walkthrough is confirmed.** Allow
+and install policy state must be effective in the client before testing; do not
+treat deployment success, backend inference, or a generated URL as handoff proof.
 
 - [Teams deep links and draft behavior](https://learn.microsoft.com/en-us/microsoftteams/platform/concepts/build-and-test/deep-link-teams)
 - [Graph chat creation](https://learn.microsoft.com/en-us/graph/api/chat-post?view=graph-rest-1.0)

@@ -57,3 +57,26 @@ def test_handoff_deployment_settings_are_optional_and_single_worker():
         assert f"value: {parameter}" in bicep
     assert "--workers 1" in bicep
     assert ".env.handoff" in (ROOT / ".gitignore").read_text().splitlines()
+
+
+def test_container_deployment_keeps_single_instance_and_managed_identity():
+    bicep = (ROOT / "infra/containerapps.bicep").read_text()
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    requirements = (ROOT / "src/requirements.txt").read_text()
+
+    assert "activeRevisionsMode: 'Single'" in bicep
+    assert "minReplicas: 1" in bicep
+    assert "maxReplicas: 1" in bicep
+    assert "adminUserEnabled: false" in bicep
+    assert "allowInsecure: false" in bicep
+    assert "targetPort: 8000" in bicep
+    assert "identity: identity.id" in bicep
+    assert "name: 'AZURE_CLIENT_ID'" in bicep
+    assert "name: 'HANDOFF_TEAMS_CATALOG_APP_ID'" in bicep
+    assert "param deployApp bool = true" in bicep
+    assert "if (deployApp)" in bicep
+    assert "CLIENTSECRET" not in bicep
+    assert 'USER app' in dockerfile
+    assert '"--workers", "1"' in dockerfile
+    assert '"0.0.0.0:8000"' in dockerfile
+    assert any(line.startswith("gunicorn") for line in requirements.splitlines())
