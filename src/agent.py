@@ -3,10 +3,13 @@ import logging
 import os
 
 import httpx
+from aiohttp import ClientError
 from azure.core.exceptions import AzureError
 from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from dotenv import load_dotenv
-from microsoft_agents.activity import Activity, ActivityTypes, Attachment, load_configuration_from_env
+from microsoft_agents.activity import (
+    Activity, ActivityTypes, Attachment, ConversationReference, load_configuration_from_env,
+)
 from microsoft_agents.authentication.msal import MsalConnectionManager
 from microsoft_agents.hosting.aiohttp import CloudAdapter
 from microsoft_agents.hosting.core import (
@@ -26,9 +29,10 @@ from foundry import (
     normalize_message,
 )
 from handoff import (
-    HandoffError, HandoffMode, HandoffStore, build_confirmation_card,
-    build_human_chat_link,
+    HandoffBroker, HandoffError, HandoffMode, HandoffRequest, HandoffStore,
+    build_confirmation_card, build_human_chat_link, support_chat_link,
 )
+from handoff_graph import GraphHandoffClient, HandoffOperationError
 
 load_dotenv()
 logging.basicConfig(
@@ -69,6 +73,10 @@ graph_chat_history = GraphChatHistory(
 
 storage = MemoryStorage()
 handoff_store = HandoffStore()
+handoff_origins: dict[str, ConversationReference] = {}
+handoff_tasks: set[asyncio.Task] = set()
+handoff_http: httpx.AsyncClient | None = None
+handoff_broker: HandoffBroker | None = None
 connection_manager = MsalConnectionManager(**agents_sdk_config)
 adapter = CloudAdapter(connection_manager=connection_manager)
 agent_app = AgentApplication[TurnState](
@@ -81,11 +89,19 @@ agent_app = AgentApplication[TurnState](
 
 @agent_app.conversation_update("membersAdded")
 async def on_members_added(context: TurnContext, _state: TurnState):
+    if await deliver_support_summary(context):
+        return
     await context.send_activity(
         "Demo Foundry Agent is ready. Ask a question in a personal chat, "
         "or mention it in a consenting group chat. In personal chat, describe an "
         "issue, then use 'handoff link' or 'handoff broker' to contact the configured helpdesk human."
     )
+
+
+@agent_app.activity(ActivityTypes.installation_update)
+async def on_installation_update(context: TurnContext, _state: TurnState):
+    if context.activity.action == "add":
+        await deliver_support_summary(context)
 
 
 def card_activity(card: dict, text: str = "") -> Activity:
@@ -109,6 +125,78 @@ def handoff_identity(activity) -> tuple[str, str, str]:
     if user.lower() == config.handoff.human_object_id.lower():
         raise HandoffError("Handoff cannot route the configured helpdesk human to themselves.")
     return tenant.lower(), user.lower(), chat
+
+
+async def send_handoff_origin(request: HandoffRequest, message: str) -> None:
+    reference = handoff_origins.get(request.request_id)
+    bot_id = os.getenv("BOT_ID") or os.getenv("CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID")
+    if not reference or not bot_id:
+        raise HandoffOperationError("notify", "Original bot conversation or bot app ID is missing.")
+
+    async def send(context: TurnContext):
+        if request.chat_id:
+            await context.send_activity(card_activity(
+                {"type": "AdaptiveCard", "version": "1.4", "body": [],
+                 "actions": [{"type": "Action.OpenUrl", "title": "Open support chat",
+                              "url": support_chat_link(request.chat_id)}]},
+                message,
+            ))
+        else:
+            await context.send_activity(message)
+    try:
+        await adapter.continue_conversation(bot_id, reference.get_continuation_activity(), send)
+    except (ClientError, AzureError, httpx.HTTPError, RuntimeError, OSError) as error:
+        raise HandoffOperationError("notify", "Could not notify the original conversation.", uncertain=True) from error
+
+
+def get_handoff_broker() -> HandoffBroker:
+    global handoff_http, handoff_broker
+    if handoff_broker is None:
+        handoff_http = httpx.AsyncClient()
+        handoff_broker = HandoffBroker(
+            handoff_store,
+            GraphHandoffClient(graph_credential, config.handoff.catalog_app_id, handoff_http),
+            send_handoff_origin,
+        )
+    return handoff_broker
+
+
+def finish_handoff_task(task: asyncio.Task) -> None:
+    handoff_tasks.discard(task)
+    if not task.cancelled() and (error := task.exception()) is not None:
+        logger.error("Handoff background task failed: %s", type(error).__name__)
+
+
+async def close_handoff_resources() -> None:
+    tasks = list(handoff_tasks)
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    if handoff_http is not None:
+        await handoff_http.aclose()
+
+
+async def deliver_support_summary(context: TurnContext) -> bool:
+    activity = context.activity
+    chat_id = getattr(activity.conversation, "id", None)
+    if not chat_id or not handoff_store.is_support_chat(chat_id):
+        return False
+    tenant = getattr(activity.conversation, "tenant_id", None)
+    if not tenant or tenant.lower() != config.handoff.tenant_id.lower():
+        logger.error("Ignoring support event with missing or unexpected tenant")
+        return True
+
+    async def send_summary(text: str):
+        try:
+            await context.send_activity(Activity(type=ActivityTypes.message, text=text, text_format="plain"))
+        except (ClientError, AzureError, httpx.HTTPError, RuntimeError, OSError) as error:
+            raise HandoffOperationError(
+                "send", "Bot summary delivery is unconfirmed; inspect the support group before retrying.",
+                uncertain=True,
+            ) from error
+
+    return await get_handoff_broker().on_group_available(chat_id, send_summary)
 
 
 async def handle_handoff(context: TurnContext, user_text: str) -> bool:
@@ -142,6 +230,13 @@ async def handle_handoff(context: TurnContext, user_text: str) -> bool:
                     "Teams opens a draft; you must send it yourself. The human has not been notified yet.",
                 ))
                 request.state = "link_ready"
+            else:
+                broker = get_handoff_broker()
+                handoff_origins[request.request_id] = activity.get_conversation_reference()
+                await context.send_activity("Starting the support-group handoff. This is not confirmation of context delivery.")
+                task = asyncio.create_task(broker.start(request, config.handoff.human_object_id))
+                handoff_tasks.add(task)
+                task.add_done_callback(finish_handoff_task)
             return True
         if command not in ("handoff link", "handoff broker"):
             await context.send_activity("Describe your issue, then use 'handoff link' or 'handoff broker'.")
@@ -154,6 +249,7 @@ async def handle_handoff(context: TurnContext, user_text: str) -> bool:
             raise HandoffError("Describe your issue in this personal chat before requesting a handoff.")
         summary = await asyncio.to_thread(gateway.summarize_handoff, transcript)
         request = handoff_store.create_request(mode, tenant, user, chat, summary)
+        request.requester_name = getattr(activity.from_property, "name", None) or "Teams user"
         await context.send_activity(card_activity(build_confirmation_card(request, config.handoff.human_upn)))
     except ValueError as error:
         logger.warning("Handoff rejected: %s", error)
@@ -172,6 +268,8 @@ async def on_message(context: TurnContext, _state: TurnState):
     )
     if conversation_type == "channel":
         logger.warning("Ignoring unsupported Teams channel message")
+        return
+    if handoff_store.is_support_chat(getattr(activity.conversation, "id", None)):
         return
     if is_group_conversation(activity) and not is_bot_mentioned(activity):
         return

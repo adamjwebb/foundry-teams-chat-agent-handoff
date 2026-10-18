@@ -113,3 +113,91 @@ def test_disabled_broker_is_explicit_and_ordinary_chat_still_works(agent_module)
         await agent_module.on_message(turn, None)
         assert turn.send_activity.call_args.args[0] == "Try reconnecting."
     asyncio.run(run())
+
+
+def test_support_groups_never_invoke_model_or_read_history(agent_module):
+    async def run():
+        from handoff import HandoffMode
+        request = agent_module.handoff_store.create_request(
+            HandoffMode.BROKER, TENANT, USER, "personal", "VPN fails.",
+        )
+        request.chat_id = "19:support@thread.v2"
+        request.state = "delivered"
+        turn = context("Summarize", chat=request.chat_id, kind="groupChat")
+        turn.activity.entities = [{"type": "mention", "mentioned": {"id": "bot"}}]
+        agent_module.gateway.ask.side_effect = AssertionError("Support group invoked model")
+        agent_module.graph_chat_history.read.side_effect = AssertionError("Support group read history")
+        await agent_module.on_message(turn, None)
+        turn.send_activity.assert_not_awaited()
+    asyncio.run(run())
+
+
+def test_proactive_send_uses_sdk_continuation_activity(agent_module):
+    async def run():
+        from handoff import HandoffMode
+        module = agent_module
+        request = module.handoff_store.create_request(
+            HandoffMode.BROKER, TENANT, USER, "personal", "VPN fails.",
+        )
+        origin = context().activity.get_conversation_reference()
+        module.handoff_origins[request.request_id] = origin
+        sent = []
+        async def continuation(bot_id, activity, callback):
+            assert bot_id == "55555555-5555-4555-8555-555555555555"
+            assert activity.type == "event"
+            assert activity.conversation.id == "personal"
+            await callback(SimpleNamespace(send_activity=AsyncMock(side_effect=sent.append)))
+        module.adapter.continue_conversation = continuation
+        await module.send_handoff_origin(request, "Pending")
+        assert sent == ["Pending"]
+    asyncio.run(run())
+
+
+def test_broker_command_and_installation_event_deliver_context(agent_module):
+    async def run():
+        from dataclasses import replace
+        from handoff import HandoffBroker
+        from test_handoff import FakeGraph
+        module = agent_module
+        module.config.handoff = replace(module.config.handoff, broker_enabled="true")
+        graph = FakeGraph()
+        module.handoff_broker = HandoffBroker(module.handoff_store, graph, module.send_handoff_origin)
+        notifications = []
+        async def continuation(bot_id, activity, callback):
+            await callback(SimpleNamespace(send_activity=AsyncMock(side_effect=notifications.append)))
+        module.adapter.continue_conversation = continuation
+        support = context(chat="19:support@thread.v2", kind="groupChat")
+        support.activity.type = "installationUpdate"
+        support.activity.action = "add"
+        graph.on_install = lambda: module.on_installation_update(support, None)
+        await module.on_message(context("VPN login fails"), None)
+        prepare = context("handoff broker")
+        await module.on_message(prepare, None)
+        card = prepare.send_activity.call_args.args[0].attachments[0].content
+        confirm = context(value=card["actions"][0]["data"])
+        await module.on_message(confirm, None)
+        await asyncio.gather(*list(module.handoff_tasks))
+        assert graph.create_calls == 1
+        sent = support.send_activity.call_args.args[0]
+        assert sent.text_format == "plain"
+        assert "VPN fails." in sent.text
+        assert "Demo User" in sent.text
+        assert notifications[-1].attachments[0].content["actions"][0]["title"] == "Open support chat"
+        assert "delivered" in notifications[-1].text
+        assert next(iter(module.handoff_store.requests.values())).state == "delivered"
+        await module.on_installation_update(support, None)
+        assert support.send_activity.await_count == 1
+    asyncio.run(run())
+
+
+def test_ordinary_group_mention_keeps_existing_model_behavior(agent_module):
+    async def run():
+        module = agent_module
+        module.graph_chat_history.read.return_value = ["Alice: VPN is down"]
+        turn = context("Help", chat="ordinary", kind="groupChat")
+        turn.activity.entities = [{"type": "mention", "mentioned": {"id": "bot"}}]
+        await module.on_message(turn, None)
+        assert turn.send_activity.call_args.args[0] == "Try reconnecting."
+        module.gateway.ask.assert_called_once_with("Help", ["Alice: VPN is down"])
+        assert not module.handoff_store.histories
+    asyncio.run(run())

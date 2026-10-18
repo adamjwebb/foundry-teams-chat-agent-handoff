@@ -9,12 +9,14 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
 from config import HandoffConfig
 from handoff import (
+    HandoffBroker,
     HandoffError,
     HandoffMode,
     HandoffStore,
     build_confirmation_card,
     build_human_chat_link,
 )
+from handoff_graph import HandoffOperationError
 
 TENANT = "11111111-1111-4111-8111-111111111111"
 USER = "22222222-2222-4222-8222-222222222222"
@@ -131,3 +133,129 @@ def test_invalid_target_fails_explicitly(value):
     })
     with pytest.raises(ValueError, match="HANDOFF_HUMAN_UPN"):
         config.validate("link")
+
+
+class FakeGraph:
+    def __init__(self):
+        self.create_calls = 0
+        self.install_calls = []
+        self.on_install = None
+        self.error_stage = None
+
+    async def create_support_chat(self, requester_id, human_id, topic):
+        self.create_calls += 1
+        assert (requester_id, human_id) == (USER, HUMAN)
+        if self.error_stage == "create":
+            raise HandoffOperationError("create", "Unknown create outcome", uncertain=True)
+        return "19:support@thread.v2"
+
+    async def install_support_app(self, chat_id):
+        self.install_calls.append(chat_id)
+        if self.on_install:
+            await self.on_install()
+        if self.error_stage == "install":
+            raise HandoffOperationError("install", "Installation denied")
+
+
+def broker_fixture():
+    store = HandoffStore()
+    graph = FakeGraph()
+    notifications = []
+
+    async def notify(request, message):
+        notifications.append(message)
+    broker = HandoffBroker(store, graph, notify)
+    request = make_request(store, HandoffMode.BROKER)
+    store.confirm(request.request_id, TENANT, USER, "personal-chat")
+    return store, graph, broker, request, notifications
+
+
+@pytest.mark.parametrize("early", [True, False])
+def test_broker_posts_once_despite_install_event_race(early):
+    async def run():
+        store, graph, broker, request, notifications = broker_fixture()
+        sent = []
+
+        async def send(text):
+            sent.append(text)
+
+        async def event():
+            assert await broker.on_group_available("19:support@thread.v2", send)
+        if early:
+            graph.on_install = event
+        await broker.start(request, HUMAN)
+        await event()
+        await event()
+        assert request.state == "delivered"
+        assert len(sent) == 1
+        assert "VPN fails." in sent[0]
+        assert request.request_id in sent[0]
+        assert USER in sent[0]
+        assert store.is_support_chat("19:support@thread.v2")
+        assert graph.create_calls == 1
+        assert graph.install_calls == ["19:support@thread.v2"]
+        assert sum("delivered" in item.lower() for item in notifications) == 1
+    asyncio.run(run())
+
+
+def test_unknown_groups_and_duplicate_start_have_no_effect():
+    async def run():
+        store, graph, broker, request, notifications = broker_fixture()
+        async def no_send(text):
+            pytest.fail("Unknown group received context")
+        assert not await broker.on_group_available("unrelated", no_send)
+        await broker.start(request, HUMAN)
+        await broker.start(request, HUMAN)
+        assert graph.create_calls == 1
+        assert request.state == "awaiting_delivery"
+        assert not any("delivered" in message.lower() for message in notifications)
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("stage,state", [("create", "uncertain"), ("install", "failed")])
+def test_broker_partial_failure_is_not_success_or_auto_retried(stage, state):
+    async def run():
+        _, graph, broker, request, notifications = broker_fixture()
+        graph.error_stage = stage
+        await broker.start(request, HUMAN)
+        await broker.start(request, HUMAN)
+        assert request.state == state
+        assert request.failure_stage == stage
+        assert graph.create_calls == 1
+        assert request.chat_id == (None if stage == "create" else "19:support@thread.v2")
+        assert not any("delivered" in message.lower() for message in notifications)
+        assert notifications
+    asyncio.run(run())
+
+
+def test_uncertain_bot_send_is_not_retried():
+    async def run():
+        _, _, broker, request, notifications = broker_fixture()
+        await broker.start(request, HUMAN)
+        sends = []
+        async def send(text):
+            sends.append(text)
+            raise HandoffOperationError("send", "Unknown send outcome", uncertain=True)
+        await broker.on_group_available(request.chat_id, send)
+        await broker.on_group_available(request.chat_id, send)
+        assert request.state == "uncertain"
+        assert len(sends) == 1
+        assert request.failure_stage == "send"
+    asyncio.run(run())
+
+
+def test_cancellation_marks_inflight_create_uncertain():
+    async def run():
+        _, graph, broker, request, _ = broker_fixture()
+        entered = asyncio.Event()
+        async def create(*args):
+            entered.set()
+            await asyncio.Event().wait()
+        graph.create_support_chat = create
+        task = asyncio.create_task(broker.start(request, HUMAN))
+        await entered.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert request.state == "uncertain"
+    asyncio.run(run())

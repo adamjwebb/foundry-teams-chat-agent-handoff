@@ -8,7 +8,7 @@ from microsoft_agents.hosting.aiohttp import (
 )
 from aiohttp.web import Request, Response, Application, run_app
 
-from agent import agent_app, connection_manager
+from agent import agent_app, close_handoff_resources, connection_manager
 
 
 async def entry_point(req: Request) -> Response:
@@ -26,6 +26,13 @@ app.router.add_post("/api/messages", entry_point)
 app["agent_configuration"] = connection_manager.get_default_connection_configuration()
 app["agent_app"] = agent_app
 app["adapter"] = agent_app.adapter
+
+
+async def cleanup_handoff(_app: Application) -> None:
+    await close_handoff_resources()
+
+
+app.on_cleanup.append(cleanup_handoff)
 
 if __name__ == "__main__":
     run_app(app, host="localhost", port=os.environ.get("PORT", 3978))

@@ -1,11 +1,17 @@
+import asyncio
+import logging
 import re
 import time
 from dataclasses import dataclass
 from enum import Enum
 from threading import RLock
-from typing import Callable
-from urllib.parse import urlencode
+from typing import Awaitable, Callable
+from urllib.parse import quote, urlencode
 from uuid import uuid4
+
+from handoff_graph import GraphHandoffClient, HandoffOperationError
+
+logger = logging.getLogger(__name__)
 
 
 class HandoffError(ValueError):
@@ -29,6 +35,7 @@ class HandoffRequest:
     state: str = "pending"
     chat_id: str | None = None
     failure_stage: str | None = None
+    requester_name: str = "Teams user"
 
 
 class HandoffStore:
@@ -135,3 +142,106 @@ def build_confirmation_card(request: HandoffRequest, human_upn: str) -> dict[str
              "data": {"handoff_action": "cancel", "request_id": request.request_id}},
         ],
     }
+
+
+def support_chat_link(chat_id: str) -> str:
+    return f"https://teams.microsoft.com/l/chat/{quote(chat_id, safe='')}/conversations"
+
+
+class HandoffBroker:
+    def __init__(
+        self, store: HandoffStore, graph: GraphHandoffClient,
+        send_origin: Callable[[HandoffRequest, str], Awaitable[None]],
+    ):
+        self.store = store
+        self.graph = graph
+        self.send_origin = send_origin
+
+    async def _notify(self, request: HandoffRequest, message: str) -> None:
+        try:
+            await self.send_origin(request, message)
+        except HandoffOperationError:
+            logger.error("Handoff %s origin notification failed; state=%s", request.request_id, request.state)
+
+    async def _failed(self, request: HandoffRequest, error: HandoffOperationError) -> None:
+        with self.store.lock:
+            if request.state == "delivered":
+                logger.warning("Handoff %s: %s failed after confirmed delivery", request.request_id, error.stage)
+                return
+            request.state = "uncertain" if error.uncertain else "failed"
+            request.failure_stage = error.stage
+        logger.error("Handoff %s stage=%s state=%s", request.request_id, error.stage, request.state)
+        await self._notify(
+            request,
+            f"Handoff {request.request_id}: {request.state} at {error.stage}. {error} "
+            + ("A support group exists; check it before starting another handoff." if request.chat_id else
+               "Check Teams before starting another handoff if the outcome is unknown."),
+        )
+
+    async def start(self, request: HandoffRequest, human_id: str) -> None:
+        with self.store.lock:
+            if request.state != "confirmed" or request.mode != HandoffMode.BROKER:
+                logger.info("Skipping duplicate or invalid broker start %s", request.request_id)
+                return
+            request.state = "creating"
+        try:
+            chat_id = await self.graph.create_support_chat(
+                request.requester_id, human_id, f"Helpdesk handoff {request.request_id[:8]}",
+            )
+            with self.store.lock:
+                request.chat_id = chat_id
+                request.state = "installing"
+            await self.graph.install_support_app(chat_id)
+            with self.store.lock:
+                pending = request.state == "installing"
+                if pending:
+                    request.state = "awaiting_delivery"
+            if pending:
+                await self._notify(
+                    request,
+                    f"Handoff {request.request_id}: support group created. Waiting for Teams "
+                    "to provide the installed bot conversation; summary not sent yet. "
+                    "If this does not complete, check app installation and bot messaging logs.",
+                )
+        except HandoffOperationError as error:
+            await self._failed(request, error)
+        except asyncio.CancelledError:
+            with self.store.lock:
+                if request.state != "delivered":
+                    request.failure_stage = request.state
+                    request.state = "uncertain"
+            logger.warning("Handoff %s interrupted; outcome uncertain", request.request_id)
+            raise
+
+    async def on_group_available(
+        self, chat_id: str, send_summary: Callable[[str], Awaitable[None]],
+    ) -> bool:
+        with self.store.lock:
+            request = next(
+                (item for item in self.store.requests.values() if item.chat_id == chat_id), None,
+            )
+            if request is None:
+                return False
+            if request.state not in ("installing", "awaiting_delivery"):
+                return True
+            request.state = "delivering"
+        try:
+            await send_summary(
+                f"Helpdesk handoff {request.request_id}\n"
+                f"Requesting user: {request.requester_name} (Entra ID: {request.requester_id})\n\n"
+                f"{request.summary}\n\n"
+                "The human now handles this conversation. The bot will not answer in this support group."
+            )
+        except HandoffOperationError as error:
+            await self._failed(request, error)
+            return True
+        except asyncio.CancelledError:
+            with self.store.lock:
+                request.failure_stage = "send"
+                request.state = "uncertain"
+            logger.warning("Handoff %s summary send interrupted; outcome uncertain", request.request_id)
+            raise
+        with self.store.lock:
+            request.state = "delivered"
+        await self._notify(request, f"Handoff {request.request_id}: summary delivered to the support group.")
+        return True
