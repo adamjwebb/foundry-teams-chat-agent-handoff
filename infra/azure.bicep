@@ -8,6 +8,11 @@ param azureAiProjectEndpoint string
 @description('Model deployment in the Microsoft Foundry project')
 param azureAiModelDeploymentName string
 param graphHistoryMessageCount string = '10'
+param handoffHumanUpn string = ''
+param handoffTenantId string = ''
+param handoffBrokerEnabled string = 'false'
+param handoffHumanObjectId string = ''
+param handoffTeamsCatalogAppId string = ''
 
 param webAppSKU string
 param linuxFxVersion string
@@ -48,7 +53,7 @@ resource webApp 'Microsoft.Web/sites@2021-02-01' = {
     serverFarmId: serverfarm.id
     siteConfig: {
       alwaysOn: true
-      appCommandLine: 'gunicorn --bind 0.0.0.0 --worker-class aiohttp.worker.GunicornWebWorker --timeout 600 app:app'
+      appCommandLine: 'gunicorn --bind 0.0.0.0 --workers 1 --worker-class aiohttp.worker.GunicornWebWorker --timeout 600 app:app'
       linuxFxVersion: pythonVersion
       appSettings: [
         {
@@ -90,6 +95,26 @@ resource webApp 'Microsoft.Web/sites@2021-02-01' = {
         {
           name: 'GRAPH_HISTORY_MESSAGE_COUNT'
           value: graphHistoryMessageCount
+        }
+        {
+          name: 'HANDOFF_HUMAN_UPN'
+          value: handoffHumanUpn
+        }
+        {
+          name: 'HANDOFF_TENANT_ID'
+          value: handoffTenantId
+        }
+        {
+          name: 'HANDOFF_BROKER_ENABLED'
+          value: handoffBrokerEnabled
+        }
+        {
+          name: 'HANDOFF_HUMAN_OBJECT_ID'
+          value: handoffHumanObjectId
+        }
+        {
+          name: 'HANDOFF_TEAMS_CATALOG_APP_ID'
+          value: handoffTeamsCatalogAppId
         }
         {
           name: 'BOT_TENANT_ID'

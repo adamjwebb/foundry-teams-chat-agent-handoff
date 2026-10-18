@@ -39,3 +39,21 @@ def test_local_teams_selects_bot_graph_auth_and_playground_resets_it():
 
     assert 'GRAPH_AUTH_MODE: "bot"' in local
     assert 'GRAPH_AUTH_MODE: "default"' in playground
+
+
+def test_handoff_deployment_settings_are_optional_and_single_worker():
+    bicep = (ROOT / "infra/azure.bicep").read_text()
+    names = {
+        "handoffHumanUpn": "HANDOFF_HUMAN_UPN",
+        "handoffTenantId": "HANDOFF_TENANT_ID",
+        "handoffBrokerEnabled": "HANDOFF_BROKER_ENABLED",
+        "handoffHumanObjectId": "HANDOFF_HUMAN_OBJECT_ID",
+        "handoffTeamsCatalogAppId": "HANDOFF_TEAMS_CATALOG_APP_ID",
+    }
+    for parameter, environment in names.items():
+        default = "'false'" if parameter == "handoffBrokerEnabled" else "''"
+        assert f"param {parameter} string = {default}" in bicep
+        assert f"name: '{environment}'" in bicep
+        assert f"value: {parameter}" in bicep
+    assert "--workers 1" in bicep
+    assert ".env.handoff" in (ROOT / ".gitignore").read_text().splitlines()

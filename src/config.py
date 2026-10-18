@@ -1,7 +1,17 @@
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlparse
 from uuid import UUID
+
+import dotenv
+
+
+def load_handoff_environment(path: Path | None = None) -> None:
+    dotenv.load_dotenv(
+        dotenv_path=path or Path(__file__).resolve().parents[1] / ".env.handoff",
+        override=False,
+    )
 
 
 @dataclass(frozen=True)

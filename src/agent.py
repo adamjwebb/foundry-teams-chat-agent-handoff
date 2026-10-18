@@ -20,7 +20,7 @@ from microsoft_agents.hosting.core import (
 )
 from openai import OpenAIError
 
-from config import Config
+from config import Config, load_handoff_environment
 from foundry import (
     FoundryModelGateway,
     GraphChatHistory,
@@ -35,6 +35,7 @@ from handoff import (
 from handoff_graph import GraphHandoffClient, HandoffOperationError
 
 load_dotenv()
+load_handoff_environment()
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s | %(message)s",

@@ -1,7 +1,30 @@
-# Demo Foundry Agent
+# Foundry Teams Chat Agent: Human Handoff Examples
 
 A Microsoft 365 Agents Toolkit Python proof of concept that connects Teams to a
 shared Microsoft Foundry project.
+
+This fork adds two **explicit, user-confirmed handoff examples** to one static
+helpdesk human. It does not implement a roster, queue, or ServiceNow integration.
+
+| Personal-chat command | Result after preview and confirmation |
+| --- | --- |
+| `handoff link` | Opens a direct human chat with a short prefilled summary. The user must send the draft. |
+| `handoff broker` | Creates a support group, installs the bot, posts the approved summary as the bot, and returns a chat link. Requires additional admin setup. |
+
+Start with the **[handoff examples guide](docs/handoff-examples.md)** for
+configuration, permissions, both walkthroughs, and troubleshooting.
+
+> [!IMPORTANT]
+> Demo only: all handoff state is **in memory**. Use one process and instance.
+> Restart loses pending confirmations, duplicate protection, and tracking that
+> keeps the bot quiet in support groups. Existing Teams chats/messages remain.
+> Neither example automatically decides to escalate or checks whether the human
+> is available. Use synthetic, non-sensitive conversations.
+
+> [!NOTE]
+> The upstream repository had no license file at the revision this fork started
+> from. This fork does not add a license or resolve rights to reuse or redistribute
+> upstream code; clarify those rights with the upstream author before broader use.
 
 ## Development and deployment guide
 

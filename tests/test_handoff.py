@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
-from config import HandoffConfig
+from config import HandoffConfig, load_handoff_environment
 from handoff import (
     HandoffBroker,
     HandoffError,
@@ -133,6 +133,22 @@ def test_invalid_target_fails_explicitly(value):
     })
     with pytest.raises(ValueError, match="HANDOFF_HUMAN_UPN"):
         config.validate("link")
+
+
+def test_optional_local_settings_load_without_overriding_process_env(tmp_path, monkeypatch):
+    local = tmp_path / ".env.handoff"
+    local.write_text(
+        "HANDOFF_HUMAN_UPN=helpdesk@example.test\nHANDOFF_TENANT_ID=local-value\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("HANDOFF_HUMAN_UPN", raising=False)
+    monkeypatch.setenv("HANDOFF_TENANT_ID", TENANT)
+    load_handoff_environment(local)
+    import os
+    config = HandoffConfig.from_env(os.environ)
+    assert config.human_upn == "helpdesk@example.test"
+    assert config.tenant_id == TENANT
+    monkeypatch.delenv("HANDOFF_HUMAN_UPN", raising=False)
 
 
 class FakeGraph:

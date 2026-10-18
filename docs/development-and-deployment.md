@@ -1,5 +1,9 @@
 # Development and deployment
 
+For the fork's optional static-human handoff configuration, Graph permissions,
+and deep-link/broker walkthroughs, see [Human handoff in Teams](handoff-examples.md).
+The original setup below still works without enabling either example.
+
 Run the commands from the repository root in the same Bash terminal unless a
 step says otherwise. The commands work on Linux, macOS, or Windows with WSL.
 
