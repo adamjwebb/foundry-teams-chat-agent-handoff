@@ -1,10 +1,55 @@
+import re
+from dataclasses import dataclass
 from urllib.parse import urlparse
+from uuid import UUID
+
+
+@dataclass(frozen=True)
+class HandoffConfig:
+    human_upn: str = ""
+    tenant_id: str = ""
+    broker_enabled: str = "false"
+    human_object_id: str = ""
+    catalog_app_id: str = ""
+
+    @classmethod
+    def from_env(cls, env):
+        return cls(
+            *(env.get(name, default).strip() for name, default in (
+                ("HANDOFF_HUMAN_UPN", ""),
+                ("HANDOFF_TENANT_ID", ""),
+                ("HANDOFF_BROKER_ENABLED", "false"),
+                ("HANDOFF_HUMAN_OBJECT_ID", ""),
+                ("HANDOFF_TEAMS_CATALOG_APP_ID", ""),
+            ))
+        )
+
+    def validate(self, mode: str) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", self.human_upn):
+            raise ValueError("Set HANDOFF_HUMAN_UPN to one helpdesk user's UPN.")
+        self._guid(self.tenant_id, "HANDOFF_TENANT_ID")
+        if mode == "broker":
+            if self.broker_enabled.lower() != "true":
+                raise ValueError("Set HANDOFF_BROKER_ENABLED=true to enable the broker example.")
+            self._guid(self.human_object_id, "HANDOFF_HUMAN_OBJECT_ID")
+            self._guid(self.catalog_app_id, "HANDOFF_TEAMS_CATALOG_APP_ID")
+        elif mode != "link":
+            raise ValueError("Unknown handoff mode.")
+
+    @staticmethod
+    def _guid(value: str, name: str) -> None:
+        try:
+            if UUID(value).int == 0:
+                raise ValueError("Empty UUID")
+        except (ValueError, AttributeError) as error:
+            raise ValueError(f"Set {name} to a nonempty GUID.") from error
 
 
 class Config:
     """Runtime configuration for the Teams-hosted Foundry agent."""
 
     def __init__(self, env):
+        self.handoff = HandoffConfig.from_env(env)
         self.project_endpoint = self._required(env, "AZURE_AI_PROJECT_ENDPOINT")
         self._validate_project_endpoint(self.project_endpoint)
         self.model_deployment_name = self._required(

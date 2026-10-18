@@ -183,3 +183,19 @@ def test_model_receives_history_as_untrusted_context():
     assert request["model"] == "gpt-4.1-mini"
     assert "untrusted user content" in request["instructions"]
     assert "<chat_history>\nParticipant: Context\n</chat_history>" in request["input"]
+
+
+def test_handoff_summary_uses_observed_context_and_rejects_empty_output():
+    openai = Mock()
+    openai.responses.create.return_value.output_text = "VPN login fails; reset attempted."
+    gateway = FoundryModelGateway.__new__(FoundryModelGateway)
+    gateway._openai = openai
+    gateway._model_deployment_name = "model"
+    assert gateway.summarize_handoff("user: VPN fails") == "VPN login fails; reset attempted."
+    request = openai.responses.create.call_args.kwargs
+    assert "untrusted" in request["instructions"]
+    assert "observed" in request["instructions"]
+    assert "user: VPN fails" in request["input"]
+    openai.responses.create.return_value.output_text = " "
+    with pytest.raises(RuntimeError, match="summary"):
+        gateway.summarize_handoff("user: VPN fails")
